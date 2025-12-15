@@ -1,0 +1,21 @@
+rule =
+
+Rule <name>:
+    term     # premise
+    -------- # divider, 3+ dashes surrounded by newlines
+    term     # conclusion
+
+
+term = <atom> # alphanumeric string, starting with letter
+     | <int>
+     | <float>
+     | <var>
+     | <relation>(<term>,*) # application, e.g. add(5, x)
+
+stage =
+
+Begin Stage <StageName>:
+<rule>*
+End Stage <StageName>
+
+Module = <stage>*
