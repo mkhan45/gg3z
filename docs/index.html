@@ -4,14 +4,24 @@
     </head>
     <body>
         <textarea id="input" style="width: 80vw; height: 80em">
-Begin Stage Basic:
+Begin Facts:
+End Facts
+
+Begin Global:
     Rule IsThree:
         add(X, 2, 5)
         ------------
         isThree(X)
+End Global
+
+Begin Stage Basic:
 End Stage Basic
         </textarea>
+        <br/>
         <button id="run">Run</button>
+        <br/>
+        <pre id="output">
+        </pre>
         <script type="module">
             import init, { parse_module } from './langame.js';
             await init();
@@ -20,10 +30,11 @@ End Stage Basic
 
             const btn = document.querySelector('#run');
             const inp = document.querySelector('#input');
+            const out = document.querySelector('#output');
 
             btn.onclick = () => {
                 console.log(inp.textContent);
-                console.log(parse_module(inp.textContent));
+                out.innerText = parse_module(inp.textContent);
             };
         </script>
     </body>

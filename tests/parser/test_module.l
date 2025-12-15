@@ -1,3 +1,9 @@
+Begin Facts:
+End Facts
+
+Begin Global:
+End Global
+
 Begin Stage Arithmetic:
 Rule Add:
     add(X, Y)

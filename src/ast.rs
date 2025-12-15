@@ -10,7 +10,9 @@ type Span<'a> = nom_locate::LocatedSpan<&'a str>;
 #[derive(Debug)]
 pub struct Module<'a> {
     pub span: Span<'a>,
-    pub stages: Vec<Stage<'a>>
+    pub facts: Vec<Term<'a>>,
+    pub global_stage: Stage<'a>,
+    pub stages: Vec<Stage<'a>>,
 }
 
 #[derive(Debug)]
@@ -105,10 +107,24 @@ impl<'a> fmt::Display for Stage<'a> {
 
 impl<'a> fmt::Display for Module<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, stage) in self.stages.iter().enumerate() {
-            if i > 0 {
-                writeln!(f)?;
-            }
+        // Print Facts section
+        writeln!(f, "Begin Facts:")?;
+        for fact in &self.facts {
+            writeln!(f, "    {}", fact)?;
+        }
+        writeln!(f, "End Facts")?;
+        writeln!(f)?;
+
+        // Print Global section
+        writeln!(f, "Begin Global:")?;
+        for rule in &self.global_stage.rules {
+            write!(f, "{}", rule)?;
+        }
+        writeln!(f, "End Global")?;
+
+        // Print regular stages
+        for stage in &self.stages {
+            writeln!(f)?;
             write!(f, "{}", stage)?;
         }
         Ok(())

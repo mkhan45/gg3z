@@ -422,9 +422,11 @@ fn test_file_stage_name_mismatch() {
 
 #[test]
 fn test_parse_module() {
-    let input = Span::new("Begin Stage S1:\nRule R1:\n    a(X)\n    ----\n    b(X)\nEnd Stage S1\n\nBegin Stage S2:\nEnd Stage S2");
+    let input = Span::new("Begin Facts:\nEnd Facts\n\nBegin Global:\nEnd Global\n\nBegin Stage S1:\nRule R1:\n    a(X)\n    ----\n    b(X)\nEnd Stage S1\n\nBegin Stage S2:\nEnd Stage S2");
     let (remaining, module) = parse_module(input).unwrap();
 
+    assert_eq!(module.facts.len(), 0);
+    assert_eq!(module.global_stage.rules.len(), 0);
     assert_eq!(module.stages.len(), 2);
     assert_eq!(module.stages[0].name, "S1");
     assert_eq!(module.stages[0].rules.len(), 1);
@@ -470,7 +472,174 @@ fn test_file_empty_module() {
 
     let (remaining, module) = parse_module(input).unwrap();
 
+    assert_eq!(module.facts.len(), 0);
+    assert_eq!(module.global_stage.rules.len(), 0);
     assert_eq!(module.stages.len(), 0);
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_module_with_facts() {
+    let input = Span::new("Begin Facts:\n    foo\n    bar(1, 2)\n    X\nEnd Facts\n\nBegin Global:\nEnd Global\n");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check facts
+    assert_eq!(module.facts.len(), 3);
+
+    match &module.facts[0].contents {
+        TermContents::Atom { text } => assert_eq!(*text, "foo"),
+        _ => panic!("Expected Atom"),
+    }
+
+    match &module.facts[1].contents {
+        TermContents::App { rel, args } => {
+            match rel {
+                Rel::UserRel { name } => assert_eq!(*name, "bar"),
+                _ => panic!("Expected UserRel"),
+            }
+            assert_eq!(args.len(), 2);
+        }
+        _ => panic!("Expected App"),
+    }
+
+    match &module.facts[2].contents {
+        TermContents::Var { name } => assert_eq!(*name, "X"),
+        _ => panic!("Expected Var"),
+    }
+
+    // Check global stage is empty
+    assert_eq!(module.global_stage.name, "Global");
+    assert_eq!(module.global_stage.rules.len(), 0);
+
+    // Check no regular stages
+    assert_eq!(module.stages.len(), 0);
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_module_with_global_rules() {
+    let input = Span::new("Begin Facts:\nEnd Facts\n\nBegin Global:\nRule GlobalRule:\n    a(X)\n    ----\n    b(X)\nEnd Global\n");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check facts are empty
+    assert_eq!(module.facts.len(), 0);
+
+    // Check global stage has one rule
+    assert_eq!(module.global_stage.name, "Global");
+    assert_eq!(module.global_stage.rules.len(), 1);
+    assert_eq!(module.global_stage.rules[0].name, "GlobalRule");
+
+    // Check no regular stages
+    assert_eq!(module.stages.len(), 0);
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_complete_module() {
+    let input = Span::new("Begin Facts:\n    initial(0)\n    count(5)\nEnd Facts\n\nBegin Global:\nRule Increment:\n    count(X)\n    --------\n    count(add(X, 1))\nEnd Global\n\nBegin Stage Processing:\nRule Process:\n    data(X)\n    -------\n    processed(X)\nEnd Stage Processing\n");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check facts
+    assert_eq!(module.facts.len(), 2);
+    match &module.facts[0].contents {
+        TermContents::App { rel, args } => {
+            match rel {
+                Rel::UserRel { name } => assert_eq!(*name, "initial"),
+                _ => panic!("Expected UserRel"),
+            }
+            assert_eq!(args.len(), 1);
+        }
+        _ => panic!("Expected App"),
+    }
+
+    // Check global rules
+    assert_eq!(module.global_stage.name, "Global");
+    assert_eq!(module.global_stage.rules.len(), 1);
+    assert_eq!(module.global_stage.rules[0].name, "Increment");
+
+    // Check regular stages
+    assert_eq!(module.stages.len(), 1);
+    assert_eq!(module.stages[0].name, "Processing");
+    assert_eq!(module.stages[0].rules.len(), 1);
+    assert_eq!(module.stages[0].rules[0].name, "Process");
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_module_empty_facts_and_global() {
+    let input = Span::new("Begin Facts:\nEnd Facts\n\nBegin Global:\nEnd Global\n\nBegin Stage Test:\nEnd Stage Test");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check facts are empty
+    assert_eq!(module.facts.len(), 0);
+
+    // Check global stage is empty
+    assert_eq!(module.global_stage.name, "Global");
+    assert_eq!(module.global_stage.rules.len(), 0);
+
+    // Check one empty stage
+    assert_eq!(module.stages.len(), 1);
+    assert_eq!(module.stages[0].name, "Test");
+    assert_eq!(module.stages[0].rules.len(), 0);
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_module_multiple_facts() {
+    let input = Span::new("Begin Facts:\n    atom1\n    atom2\n    app(1, 2, 3)\n    42\n    3.14\n    Variable\nEnd Facts\n\nBegin Global:\nEnd Global\n");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check all fact types
+    assert_eq!(module.facts.len(), 6);
+
+    match &module.facts[0].contents {
+        TermContents::Atom { text } => assert_eq!(*text, "atom1"),
+        _ => panic!("Expected Atom"),
+    }
+
+    match &module.facts[1].contents {
+        TermContents::Atom { text } => assert_eq!(*text, "atom2"),
+        _ => panic!("Expected Atom"),
+    }
+
+    match &module.facts[2].contents {
+        TermContents::App { args, .. } => assert_eq!(args.len(), 3),
+        _ => panic!("Expected App"),
+    }
+
+    match &module.facts[3].contents {
+        TermContents::Int { val } => assert_eq!(*val, 42),
+        _ => panic!("Expected Int"),
+    }
+
+    match &module.facts[4].contents {
+        TermContents::Float { val } => assert!((val - 3.14).abs() < 0.001),
+        _ => panic!("Expected Float"),
+    }
+
+    match &module.facts[5].contents {
+        TermContents::Var { name } => assert_eq!(*name, "Variable"),
+        _ => panic!("Expected Var"),
+    }
+
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_module_multiple_global_rules() {
+    let input = Span::new("Begin Facts:\nEnd Facts\n\nBegin Global:\nRule Rule1:\n    a(X)\n    ----\n    b(X)\n\nRule Rule2:\n    c(Y)\n    ----\n    d(Y)\nEnd Global\n");
+    let (remaining, module) = parse_module(input).unwrap();
+
+    // Check global stage has two rules
+    assert_eq!(module.global_stage.name, "Global");
+    assert_eq!(module.global_stage.rules.len(), 2);
+    assert_eq!(module.global_stage.rules[0].name, "Rule1");
+    assert_eq!(module.global_stage.rules[1].name, "Rule2");
 
     assert_eq!(*remaining.fragment(), "");
 }

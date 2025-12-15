@@ -7,7 +7,7 @@ use nom::{
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{char, digit1, multispace0, multispace1, line_ending},
     combinator::{opt, recognize},
-    multi::{many0, many1, separated_list0},
+    multi::{many0, separated_list0},
     sequence::delimited,
 };
 
@@ -98,9 +98,52 @@ pub fn parse_stage(s: Span) -> IResult<Span, Stage> {
 
 pub fn parse_module(s: Span) -> IResult<Span, Module> {
     let (s, start_pos) = position(s)?;
+    let (s, _) = multispace0(s)?;
 
-    // Parse zero or more stages (with optional whitespace between them)
-    let (s, stages) = many1(|s| {
+    // Parse "Begin Facts:"
+    let (s, _) = tag("Begin Facts:")(s)?;
+    let (s, _) = line_ending(s)?;
+
+    // Parse zero or more terms (facts), each on its own line
+    let (s, facts) = many0(|s| {
+        let (s, _) = multispace0(s)?;
+        let (s, term) = parse_term(s)?;
+        let (s, _) = line_ending(s)?;
+        Ok((s, term))
+    }).parse(s)?;
+
+    // Parse "End Facts"
+    let (s, _) = multispace0(s)?;
+    let (s, _) = tag("End Facts")(s)?;
+    let (s, _) = multispace1(s)?;
+
+    // Parse "Begin Global:"
+    let (s, _) = tag("Begin Global:")(s)?;
+    let (s, _) = line_ending(s)?;
+
+    // Parse zero or more rules (global rules)
+    let (s, global_pos) = position(s)?;
+    let (s, global_rules) = many0(|s| {
+        let (s, _) = multispace0(s)?;
+        let (s, rule) = parse_rule(s)?;
+        let (s, _) = multispace0(s)?;
+        Ok((s, rule))
+    }).parse(s)?;
+
+    // Parse "End Global"
+    let (s, _) = multispace0(s)?;
+    let (s, _) = tag("End Global")(s)?;
+    let (s, _) = multispace0(s)?;
+
+    // Create global stage
+    let global_stage = Stage {
+        span: global_pos,
+        name: "Global",
+        rules: global_rules,
+    };
+
+    // Parse zero or more regular stages (with optional whitespace between them)
+    let (s, stages) = many0(|s| {
         let (s, _) = multispace0(s)?;
         let (s, stage) = parse_stage(s)?;
         let (s, _) = multispace0(s)?;
@@ -109,6 +152,8 @@ pub fn parse_module(s: Span) -> IResult<Span, Module> {
 
     Ok((s, Module {
         span: start_pos,
+        facts,
+        global_stage,
         stages,
     }))
 }

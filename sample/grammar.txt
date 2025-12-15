@@ -18,4 +18,13 @@ Begin Stage <StageName>:
 <rule>*
 End Stage <StageName>
 
-Module = <stage>*
+Module =
+    Begin Facts:
+    <term>*
+    End Facts
+
+    Begin Global:
+    <rule>*
+    End Global
+
+    <stage>*
