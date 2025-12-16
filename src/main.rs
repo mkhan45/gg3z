@@ -12,7 +12,7 @@ use ast::compile::Compiler;
 
 use ast::Module;
 use ir::Program;
-use solver::{format_solution, Solver};
+use solver::{format_solution, Solver, SearchStrategy};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn parse_module(input: *const c_char) -> *mut Module {
@@ -58,6 +58,7 @@ pub unsafe extern "C" fn module_get_stage_name(module: *mut Module, index: i32) 
 pub struct Frontend {
     pub program: Program,
     pub var_map: std::collections::HashMap<String, ir::TermId>,
+    pub strategy: SearchStrategy,
 }
 
 impl Frontend {
@@ -65,6 +66,7 @@ impl Frontend {
         Self {
             program: Program::default(),
             var_map: std::collections::HashMap::new(),
+            strategy: SearchStrategy::default(),
         }
     }
 
@@ -97,7 +99,7 @@ impl Frontend {
             .compile_query(&term);
 
         let mut solver = Solver::new(&mut self.program);
-        let solutions: Vec<_> = solver.query(goal).with_limit(limit).collect();
+        let solutions: Vec<_> = solver.query_with_strategy(goal, self.strategy).with_limit(limit).collect();
 
         Ok(solutions
             .iter()
@@ -120,6 +122,27 @@ pub extern "C" fn create_frontend() -> *mut Frontend {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn free_frontend(frontend: *mut Frontend) {
     unsafe { std::ptr::drop_in_place(frontend) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_set_strategy(frontend: *mut Frontend, strategy: i32) {
+    unsafe {
+        (*frontend).strategy = match strategy {
+            0 => SearchStrategy::BFS,
+            1 => SearchStrategy::DFS,
+            _ => SearchStrategy::BFS,
+        };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_get_strategy(frontend: *mut Frontend) -> i32 {
+    unsafe {
+        match (*frontend).strategy {
+            SearchStrategy::BFS => 0,
+            SearchStrategy::DFS => 1,
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -253,5 +276,26 @@ End Global
 
         let result = frontend.query("eq(X, Y)").unwrap();
         assert!(!result.is_empty(), "eq(X, cons(A, B)) should work with relational solver");
+    }
+
+    #[test]
+    fn test_eq_fact_with_rule_present() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    eq(L, pair(1, 2))
+End Facts
+
+Begin Global:
+    Rule Test:
+    eq(A, B)
+    --------
+    someThing(B, A)
+End Global
+"#).unwrap();
+
+        let result = frontend.query("eq(A, L)").unwrap();
+        eprintln!("Query result: {:?}", result);
+        assert!(!result.is_empty(), "Expected at least one solution");
+        assert!(result[0].contains("pair"), "Expected L to be bound to pair(1, 2), got: {:?}", result);
     }
 }

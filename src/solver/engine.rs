@@ -218,14 +218,30 @@ impl State {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SearchStrategy {
+    #[default]
+    BFS,
+    DFS,
+}
+
 pub struct SearchQueue {
     queue: VecDeque<State>,
+    strategy: SearchStrategy,
 }
 
 impl SearchQueue {
     pub fn new() -> Self {
         Self {
             queue: VecDeque::new(),
+            strategy: SearchStrategy::default(),
+        }
+    }
+
+    pub fn with_strategy(strategy: SearchStrategy) -> Self {
+        Self {
+            queue: VecDeque::new(),
+            strategy,
         }
     }
 
@@ -234,7 +250,10 @@ impl SearchQueue {
     }
 
     pub fn pop(&mut self) -> Option<State> {
-        self.queue.pop_front()
+        match self.strategy {
+            SearchStrategy::BFS => self.queue.pop_front(),
+            SearchStrategy::DFS => self.queue.pop_back(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -243,6 +262,10 @@ impl SearchQueue {
 
     pub fn len(&self) -> usize {
         self.queue.len()
+    }
+
+    pub fn strategy(&self) -> SearchStrategy {
+        self.strategy
     }
 }
 
@@ -503,19 +526,27 @@ impl<'p> Solver<'p> {
     }
 
     pub fn query(&mut self, goal: PropId) -> SolutionIter<'_, 'p> {
+        self.query_with_strategy(goal, SearchStrategy::default())
+    }
+
+    pub fn query_with_strategy(
+        &mut self,
+        goal: PropId,
+        strategy: SearchStrategy,
+    ) -> SolutionIter<'_, 'p> {
         let mut state = State::new(goal);
-        
+
         for &fact_prop in &self.program.facts {
             state = state.with_goal(fact_prop);
         }
 
-        let mut queue = SearchQueue::new();
+        let mut queue = SearchQueue::with_strategy(strategy);
         queue.push(state);
 
         SolutionIter {
             solver: self,
             queue,
-            max_steps: 10000,
+            max_steps: 1_000_000,
             steps: 0,
             max_solutions: None,
             solutions_found: 0,
@@ -523,7 +554,15 @@ impl<'p> Solver<'p> {
     }
 
     pub fn query_from_state(&mut self, state: State) -> SolutionIter<'_, 'p> {
-        let mut queue = SearchQueue::new();
+        self.query_from_state_with_strategy(state, SearchStrategy::default())
+    }
+
+    pub fn query_from_state_with_strategy(
+        &mut self,
+        state: State,
+        strategy: SearchStrategy,
+    ) -> SolutionIter<'_, 'p> {
+        let mut queue = SearchQueue::with_strategy(strategy);
         queue.push(state);
 
         SolutionIter {
@@ -635,68 +674,81 @@ mod tests {
     use crate::ast::parser;
     use nom::Finish;
 
+    const ALL_STRATEGIES: [SearchStrategy; 2] = [SearchStrategy::BFS, SearchStrategy::DFS];
+
     fn parse_and_compile(input: &str) -> Program {
         let result = parser::parse_module(input.into()).finish();
         let (_, module) = result.expect("parse failed");
         compile(&module)
     }
 
+    fn for_each_strategy(test_fn: impl Fn(SearchStrategy)) {
+        for strategy in ALL_STRATEGIES {
+            test_fn(strategy);
+        }
+    }
+
     #[test]
     fn test_fact_query() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
     position(player, 0, 0)
 End Facts
 
 Begin Global:
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let position_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "position")
-            .map(|(id, _)| id)
-            .unwrap();
+            let position_rel = program
+                .rels
+                .iter()
+                .find(|(_, r)| r.name == "position")
+                .map(|(id, _)| id)
+                .unwrap();
 
-        let player_sym = program.symbols.intern("player".to_string());
-        let player_term = program.terms.alloc(Term::Atom(player_sym));
-        let x_var = program.vars.alloc(crate::ir::Var {
-            name: "X".to_string(),
+            let player_sym = program.symbols.intern("player".to_string());
+            let player_term = program.terms.alloc(Term::Atom(player_sym));
+            let x_var = program.vars.alloc(crate::ir::Var {
+                name: "X".to_string(),
+            });
+            let y_var = program.vars.alloc(crate::ir::Var {
+                name: "Y".to_string(),
+            });
+            let x_term = program.terms.alloc(Term::Var(x_var));
+            let y_term = program.terms.alloc(Term::Var(y_var));
+
+            let query_prop = program.props.alloc(Prop::App {
+                rel: position_rel,
+                args: vec![player_term, x_term, y_term],
+            });
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(solutions.len(), 1, "strategy: {:?}", strategy);
+            let solution = &solutions[0];
+
+            let x_val = solution.subst.walk(x_term, &solver.program.terms);
+            let y_val = solution.subst.walk(y_term, &solver.program.terms);
+
+            match solver.program.terms.get(x_val) {
+                Term::Int(0) => {}
+                other => panic!("Expected Int(0), got {:?} (strategy: {:?})", other, strategy),
+            }
+            match solver.program.terms.get(y_val) {
+                Term::Int(0) => {}
+                other => panic!("Expected Int(0), got {:?} (strategy: {:?})", other, strategy),
+            }
         });
-        let y_var = program.vars.alloc(crate::ir::Var {
-            name: "Y".to_string(),
-        });
-        let x_term = program.terms.alloc(Term::Var(x_var));
-        let y_term = program.terms.alloc(Term::Var(y_var));
-
-        let query_prop = program.props.alloc(Prop::App {
-            rel: position_rel,
-            args: vec![player_term, x_term, y_term],
-        });
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 1);
-        let solution = &solutions[0];
-
-        let x_val = solution.subst.walk(x_term, &solver.program.terms);
-        let y_val = solution.subst.walk(y_term, &solver.program.terms);
-
-        match solver.program.terms.get(x_val) {
-            Term::Int(0) => {}
-            other => panic!("Expected Int(0), got {:?}", other),
-        }
-        match solver.program.terms.get(y_val) {
-            Term::Int(0) => {}
-            other => panic!("Expected Int(0), got {:?}", other),
-        }
     }
 
     #[test]
     fn test_rule_backchain() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
     base(1)
 End Facts
 
@@ -707,41 +759,45 @@ Rule Derive:
     derived(X)
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let derived_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "derived")
-            .map(|(id, _)| id)
-            .unwrap();
+            let derived_rel = program
+                .rels
+                .iter()
+                .find(|(_, r)| r.name == "derived")
+                .map(|(id, _)| id)
+                .unwrap();
 
-        let var = program.vars.alloc(crate::ir::Var {
-            name: "Q".to_string(),
+            let var = program.vars.alloc(crate::ir::Var {
+                name: "Q".to_string(),
+            });
+            let var_term = program.terms.alloc(Term::Var(var));
+
+            let query_prop = program.props.alloc(Prop::App {
+                rel: derived_rel,
+                args: vec![var_term],
+            });
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(solutions.len(), 1, "strategy: {:?}", strategy);
+            let solution = &solutions[0];
+
+            let result = solution.subst.walk(var_term, &solver.program.terms);
+            match solver.program.terms.get(result) {
+                Term::Int(1) => {}
+                other => panic!("Expected Int(1), got {:?} (strategy: {:?})", other, strategy),
+            }
         });
-        let var_term = program.terms.alloc(Term::Var(var));
-
-        let query_prop = program.props.alloc(Prop::App {
-            rel: derived_rel,
-            args: vec![var_term],
-        });
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 1);
-        let solution = &solutions[0];
-
-        let result = solution.subst.walk(var_term, &solver.program.terms);
-        match solver.program.terms.get(result) {
-            Term::Int(1) => {}
-            other => panic!("Expected Int(1), got {:?}", other),
-        }
     }
 
     #[test]
     fn test_multiple_facts() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
     item(sword)
     item(shield)
     item(potion)
@@ -750,34 +806,38 @@ End Facts
 Begin Global:
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let item_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "item")
-            .map(|(id, _)| id)
-            .unwrap();
+            let item_rel = program
+                .rels
+                .iter()
+                .find(|(_, r)| r.name == "item")
+                .map(|(id, _)| id)
+                .unwrap();
 
-        let var = program.vars.alloc(crate::ir::Var {
-            name: "I".to_string(),
+            let var = program.vars.alloc(crate::ir::Var {
+                name: "I".to_string(),
+            });
+            let var_term = program.terms.alloc(Term::Var(var));
+
+            let query_prop = program.props.alloc(Prop::App {
+                rel: item_rel,
+                args: vec![var_term],
+            });
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(solutions.len(), 3, "strategy: {:?}", strategy);
         });
-        let var_term = program.terms.alloc(Term::Var(var));
-
-        let query_prop = program.props.alloc(Prop::App {
-            rel: item_rel,
-            args: vec![var_term],
-        });
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 3);
     }
 
     #[test]
     fn test_simple_graph() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
     edge(1, 2)
     edge(2, 3)
 End Facts
@@ -794,29 +854,36 @@ Begin Global:
     connected(A, B)
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let connected_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "connected")
-            .map(|(id, _)| id)
-            .unwrap();
+            let connected_rel = program
+                .rels
+                .iter()
+                .find(|(_, r)| r.name == "connected")
+                .map(|(id, _)| id)
+                .unwrap();
 
-        let query_prop = program.props.alloc(Prop::App {
-            rel: connected_rel,
-            args: vec![program.terms.alloc(Term::Int(1)), program.terms.alloc(Term::Int(3))],
+            let query_prop = program.props.alloc(Prop::App {
+                rel: connected_rel,
+                args: vec![
+                    program.terms.alloc(Term::Int(1)),
+                    program.terms.alloc(Term::Int(3)),
+                ],
+            });
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(solutions.len(), 1, "strategy: {:?}", strategy);
         });
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 1);
     }
 
     #[test]
     fn test_smt_constraint() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
     value(5)
 End Facts
 
@@ -827,92 +894,119 @@ Rule AddOne:
     next(int_add(X, 1))
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let next_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "next")
-            .map(|(id, _)| id)
-            .unwrap();
+            let next_rel = program
+                .rels
+                .iter()
+                .find(|(_, r)| r.name == "next")
+                .map(|(id, _)| id)
+                .unwrap();
 
-        let var = program.vars.alloc(crate::ir::Var {
-            name: "R".to_string(),
+            let var = program.vars.alloc(crate::ir::Var {
+                name: "R".to_string(),
+            });
+            let var_term = program.terms.alloc(Term::Var(var));
+
+            let query_prop = program.props.alloc(Prop::App {
+                rel: next_rel,
+                args: vec![var_term],
+            });
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(solutions.len(), 1, "strategy: {:?}", strategy);
+            assert!(
+                !solutions[0].constraints.is_empty(),
+                "strategy: {:?}",
+                strategy
+            );
         });
-        let var_term = program.terms.alloc(Term::Var(var));
-
-        let query_prop = program.props.alloc(Prop::App {
-            rel: next_rel,
-            args: vec![var_term],
-        });
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 1);
-        assert!(!solutions[0].constraints.is_empty());
     }
 
     #[test]
     fn test_eq_conjunction_fails_on_conflict() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
 End Facts
 
 Begin Global:
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let var = program.vars.alloc(crate::ir::Var {
-            name: "X".to_string(),
+            let var = program.vars.alloc(crate::ir::Var {
+                name: "X".to_string(),
+            });
+            let var_term = program.terms.alloc(Term::Var(var));
+            let one_term = program.terms.alloc(Term::Int(1));
+            let two_term = program.terms.alloc(Term::Int(2));
+
+            let eq1 = program.props.alloc(Prop::Eq(var_term, one_term));
+            let eq2 = program.props.alloc(Prop::Eq(var_term, two_term));
+            let query_prop = program.props.alloc(Prop::And(eq1, eq2));
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(
+                solutions.len(),
+                0,
+                "and(eq(X, 1), eq(X, 2)) should fail (strategy: {:?})",
+                strategy
+            );
         });
-        let var_term = program.terms.alloc(Term::Var(var));
-        let one_term = program.terms.alloc(Term::Int(1));
-        let two_term = program.terms.alloc(Term::Int(2));
-        
-        let eq1 = program.props.alloc(Prop::Eq(var_term, one_term));
-        let eq2 = program.props.alloc(Prop::Eq(var_term, two_term));
-        let query_prop = program.props.alloc(Prop::And(eq1, eq2));
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 0, "and(eq(X, 1), eq(X, 2)) should fail");
     }
 
     #[test]
     fn test_eq_conjunction_succeeds_when_compatible() {
-        let input = r#"Begin Facts:
+        for_each_strategy(|strategy| {
+            let input = r#"Begin Facts:
 End Facts
 
 Begin Global:
 End Global
 "#;
-        let mut program = parse_and_compile(input);
+            let mut program = parse_and_compile(input);
 
-        let var_x = program.vars.alloc(crate::ir::Var {
-            name: "X".to_string(),
+            let var_x = program.vars.alloc(crate::ir::Var {
+                name: "X".to_string(),
+            });
+            let var_y = program.vars.alloc(crate::ir::Var {
+                name: "Y".to_string(),
+            });
+            let var_x_term = program.terms.alloc(Term::Var(var_x));
+            let var_y_term = program.terms.alloc(Term::Var(var_y));
+            let one_term = program.terms.alloc(Term::Int(1));
+
+            let eq1 = program.props.alloc(Prop::Eq(var_x_term, one_term));
+            let eq2 = program.props.alloc(Prop::Eq(var_x_term, var_y_term));
+            let query_prop = program.props.alloc(Prop::And(eq1, eq2));
+
+            let mut solver = Solver::new(&mut program);
+            let solutions: Vec<_> = solver
+                .query_with_strategy(query_prop, strategy)
+                .collect();
+
+            assert_eq!(
+                solutions.len(),
+                1,
+                "and(eq(X, 1), eq(X, Y)) should succeed with Y=1 (strategy: {:?})",
+                strategy
+            );
+
+            let y_val = solutions[0]
+                .subst
+                .walk(var_y_term, &solver.program.terms);
+            match solver.program.terms.get(y_val) {
+                Term::Int(1) => {}
+                other => panic!("Expected Y=1, got {:?} (strategy: {:?})", other, strategy),
+            }
         });
-        let var_y = program.vars.alloc(crate::ir::Var {
-            name: "Y".to_string(),
-        });
-        let var_x_term = program.terms.alloc(Term::Var(var_x));
-        let var_y_term = program.terms.alloc(Term::Var(var_y));
-        let one_term = program.terms.alloc(Term::Int(1));
-        
-        let eq1 = program.props.alloc(Prop::Eq(var_x_term, one_term));
-        let eq2 = program.props.alloc(Prop::Eq(var_x_term, var_y_term));
-        let query_prop = program.props.alloc(Prop::And(eq1, eq2));
-
-        let mut solver = Solver::new(&mut program);
-        let solutions: Vec<_> = solver.query(query_prop).collect();
-
-        assert_eq!(solutions.len(), 1, "and(eq(X, 1), eq(X, Y)) should succeed with Y=1");
-        
-        let y_val = solutions[0].subst.walk(var_y_term, &solver.program.terms);
-        match solver.program.terms.get(y_val) {
-            Term::Int(1) => {}
-            other => panic!("Expected Y=1, got {:?}", other),
-        }
     }
 }

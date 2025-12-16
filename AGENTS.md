@@ -359,6 +359,29 @@ When solving a query, all facts are conjoined as goals with the query. This allo
 
 Variables defined in facts persist into query scope via the `var_map` stored in Frontend.
 
+### Fact-Query Interaction Examples
+
+**Constraining queries with eq facts:**
+```
+Begin Facts:
+    eq(X, 1)
+End Facts
+```
+- Query `eq(X, 2)` → **fails** (X is already bound to 1)
+- Query `eq(X, Y)` → **succeeds** with Y=1
+- Query `eq(X, cons(A, B))` → **fails** (1 doesn't unify with cons(A, B))
+
+**Relational facts with back-chaining:**
+```
+Begin Facts:
+    position(player, 0, 0)
+End Facts
+```
+- Query `position(player, X, Y)` → **succeeds** with X=0, Y=0
+- Query `position(enemy, X, Y)` → **fails** (no matching fact)
+
+**Key insight:** There's no semantic difference between a relational fact and an asserted proposition. All facts are just propositions conjoined with queries during solving.
+
 ---
 
 # Solver Architecture (src/solver/engine.rs)
@@ -394,9 +417,21 @@ pub struct Solver<'a> {
 }
 ```
 
-- `query(goal: PropId)` → `SolutionIter`: Returns iterator over solutions
+- `query(goal: PropId)` → `SolutionIter`: Returns iterator over solutions (BFS by default)
+- `query_with_strategy(goal, strategy)` → `SolutionIter`: Use specific search strategy
 - `SolutionIter.with_limit(n)`: Limit number of solutions
 - `SolutionIter.with_max_steps(n)`: Limit search steps
+
+### SearchStrategy
+
+```rust
+pub enum SearchStrategy {
+    BFS,  // Breadth-first (default) - explores all states at depth N before N+1
+    DFS,  // Depth-first - explores deepest states first
+}
+```
+
+Use `SearchStrategy::DFS` when you want to find solutions quickly without exploring all branches at each depth. BFS is fairer but may use more memory on deep search trees.
 
 ### Goal Processing
 

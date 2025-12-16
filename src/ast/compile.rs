@@ -336,6 +336,8 @@ impl<'a> Compiler<'a> {
             self.program.facts.push(fact_prop);
         }
 
+        let fact_var_map = self.var_map.clone();
+
         for rule in &module.global_stage.rules {
             let clause = self.lower_rule(rule);
             self.program.global_rules.push(clause);
@@ -345,6 +347,8 @@ impl<'a> Compiler<'a> {
             let ir_stage = self.lower_stage(stage);
             self.program.stages.push(ir_stage);
         }
+
+        self.var_map = fact_var_map;
     }
 }
 

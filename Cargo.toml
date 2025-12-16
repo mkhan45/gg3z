@@ -10,7 +10,7 @@ nom_locate = "5.0.0"
 im = "15.1"
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 strip = true
 
 [profile.release.package.z3]

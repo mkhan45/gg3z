@@ -6,20 +6,77 @@
     <body>
         <textarea id="input" style="width: 80vw; height: 30em">
 Begin Facts:
-    position(player, 0, 0)
+    true()
+    eq(L, cons(1, cons(2, cons(3, cons(4, nil)))))
 End Facts
 
 Begin Global:
-End Global
+    Rule SameLenBase:
+    true()
+    -----------------
+    sameLength(nil, nil)
 
-Begin Stage Move:
-End Stage Move
+    Rule SameLenRec:
+    sameLength(Xs, Ys)
+    ------------------
+    sameLength(cons(Xh, Xs), cons(Yh, Ys))
+
+    Rule ContainsHead:
+    true()
+    ------------------
+    contains(cons(X, Xs), X)
+
+    Rule ContainsTail:
+    contains(Xs, X)
+    ---------------
+    contains(cons(Y, Xs), X)
+
+    Rule ContainsAllBase:
+    true()
+    ---------------------
+    containsAll(nil, L2)
+
+    Rule ContainsAllRec:
+    and(contains(L2, X), containsAll(Xs, L2))
+    -----------------------------------------
+    containsAll(cons(X, Xs), L2)
+
+    Rule AppendBase:
+    true()
+    ----------------
+    append(nil, X, cons(X, nil))
+
+    Rule AppendRec:
+    append(Xs, X, Ys)
+    -----------------
+    append(cons(Xh, Xs), X, cons(Xh, Ys))
+
+    Rule ReverseBase:
+    true()
+    -----------------
+    reverseOf(nil, nil)
+
+    Rule ReverseRec:
+    and(reverseOf(Xs, Yp), append(Yp, Xh, Y))
+    -----------------------------------------
+    reverseOf(cons(Xh, Xs), Y)
+
+    Rule Palindrome:
+    reverseOf(X, X)
+    ---------------
+    palindrome(X)
+End Global
         </textarea>
         <br/>
         <button id="reload">Reload</button>
         <span id="stages"></span>
         <br/>
-        <input id="query-input" type="text" placeholder="position(player, X, Y)" style="width: 300px"/>
+        <label for="strategy-select">Strategy:</label>
+        <select id="strategy-select">
+            <option value="0">BFS</option>
+            <option value="1">DFS</option>
+        </select>
+        <input id="query-input" type="text" value="and(containsAll(L, A), palindrome(A))" style="width: 300px"></input>
         <button id="query-btn">Query</button>
         <br/>
         <pre id="output"></pre>
@@ -49,6 +106,8 @@ End Stage Move
             let frontend_rule_count = Module.cwrap('frontend_rule_count', 'number', ['number']);
             let frontend_stage_count = Module.cwrap('frontend_stage_count', 'number', ['number']);
             let frontend_stage_name = Module.cwrap('frontend_stage_name', 'string', ['number', 'number']);
+            let frontend_set_strategy = Module.cwrap('frontend_set_strategy', null, ['number', 'number']);
+            let frontend_get_strategy = Module.cwrap('frontend_get_strategy', 'number', ['number']);
 
             const reloadBtn = document.querySelector('#reload');
             const stagesSpan = document.querySelector('#stages');
@@ -56,9 +115,14 @@ End Stage Move
             const out = document.querySelector('#output');
             const queryInput = document.querySelector('#query-input');
             const queryBtn = document.querySelector('#query-btn');
+            const strategySelect = document.querySelector('#strategy-select');
 
             let currentModule = null;
             let frontend = create_frontend();
+
+            strategySelect.onchange = () => {
+                frontend_set_strategy(frontend, parseInt(strategySelect.value));
+            };
 
             function buildStageButtons() {
                 stagesSpan.innerHTML = '';
@@ -96,8 +160,7 @@ End Stage Move
                 const ruleCount = frontend_rule_count(frontend);
                 const stageCount = frontend_stage_count(frontend);
                 
-                out.innerText = module_to_string(currentModule) + 
-                    '\n\nLoaded: ' + factCount + ' facts, ' + ruleCount + ' global rules, ' + stageCount + ' stages';
+                out.innerText = 'Loaded: ' + factCount + ' facts, ' + ruleCount + ' global rules, ' + stageCount + ' stages';
                 
                 buildStageButtons();
             };
