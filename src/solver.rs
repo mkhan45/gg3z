@@ -1,3 +1,3 @@
 mod game_state;
 
-pub use game_state::GameState;
+pub use game_state::{GameState, QueryResult};

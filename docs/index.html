@@ -19,6 +19,9 @@ End Stage Move
         <button id="reload">Reload</button>
         <span id="stages"></span>
         <br/>
+        <input id="query-input" type="text" placeholder="position(player, X, Y)" style="width: 300px"/>
+        <button id="query-btn">Query</button>
+        <br/>
         <pre id="output"></pre>
         <script type="module">
             import module_loader from './langame.js';
@@ -35,32 +38,73 @@ End Stage Move
             let free_module = Module.cwrap('free_module', null, ['number']);
             window.free_module = free_module;
 
+            let create_game_state = Module.cwrap('create_game_state', 'number', []);
+            let game_state_reset = Module.cwrap('game_state_reset', null, ['number']);
+            let game_state_load_facts = Module.cwrap('game_state_load_facts', null, ['number', 'number']);
+            let game_state_load_global = Module.cwrap('game_state_load_global', null, ['number', 'number']);
+            let game_state_load_stage = Module.cwrap('game_state_load_stage', null, ['number', 'number', 'number']);
+            let game_state_check = Module.cwrap('game_state_check', 'number', ['number']);
+            let module_stage_count = Module.cwrap('module_stage_count', 'number', ['number']);
+            let module_get_stage_name = Module.cwrap('module_get_stage_name', 'string', ['number', 'number']);
+            let game_state_query = Module.cwrap('game_state_query', 'string', ['number', 'string']);
+
             const reloadBtn = document.querySelector('#reload');
             const stagesSpan = document.querySelector('#stages');
             const inp = document.querySelector('#input');
             const out = document.querySelector('#output');
+            const queryInput = document.querySelector('#query-input');
+            const queryBtn = document.querySelector('#query-btn');
 
-            function render() {
-            }
+            let gameState = create_game_state();
+            let currentModule = null;
+
+            const SAT_RESULTS = ['Sat', 'Unsat', 'Unknown'];
 
             function buildStageButtons() {
                 stagesSpan.innerHTML = '';
-                if (!session) return;
-                for (let i = 0; i < session.stage_count(); i++) {
+                if (!currentModule) return;
+                const count = module_stage_count(currentModule);
+                for (let i = 0; i < count; i++) {
                     const btn = document.createElement('button');
-                    btn.textContent = session.get_stage_name(i);
+                    btn.textContent = module_get_stage_name(currentModule, i);
                     btn.onclick = () => {
-                        out.innerText = 'Stage: ' + btn.textContent;
+                        game_state_load_stage(gameState, currentModule, i);
+                        const result = game_state_check(gameState);
+                        out.innerText += '\nLoaded stage: ' + btn.textContent + ' -> ' + SAT_RESULTS[result];
                     };
                     stagesSpan.appendChild(btn);
                 }
             }
 
             reloadBtn.onclick = () => {
-                const code = inp.textContent;
-                const mod = parse_module(code);
-                console.log(mod);
-                out.innerText = module_to_string(mod);
+                game_state_reset(gameState);
+                
+                if (currentModule) {
+                    free_module(currentModule);
+                }
+
+                const code = inp.value;
+                currentModule = parse_module(code);
+                
+                if (!currentModule) {
+                    out.innerText = 'Parse error';
+                    return;
+                }
+
+                game_state_load_facts(gameState, currentModule);
+                game_state_load_global(gameState, currentModule);
+                
+                const result = game_state_check(gameState);
+                out.innerText = module_to_string(currentModule) + '\n\nCheck: ' + SAT_RESULTS[result];
+                
+                buildStageButtons();
+            };
+
+            queryBtn.onclick = () => {
+                const queryStr = queryInput.value;
+                if (!queryStr) return;
+                const result = game_state_query(gameState, queryStr);
+                out.innerText += '\n\nQuery: ' + queryStr + '\n' + result;
             };
         </script>
     </body>

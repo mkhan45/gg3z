@@ -20,6 +20,12 @@ impl GameState {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.solver.reset();
+        self.relations.clear();
+        self.variables.clear();
+    }
+
     pub fn load_stage(&mut self, stage: &Stage) {
         for rule in &stage.rules {
             self.assert_rule(rule);
