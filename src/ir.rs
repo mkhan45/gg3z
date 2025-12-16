@@ -18,6 +18,10 @@ impl<T> Id<T> {
         Self(index, PhantomData)
     }
 
+    pub fn new_raw(index: u32) -> Self {
+        Self(index, PhantomData)
+    }
+
     pub fn index(self) -> usize {
         self.0 as usize
     }
@@ -115,7 +119,7 @@ pub struct Var {
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Var(VarId),
     Atom(SymbolId),
@@ -123,7 +127,7 @@ pub enum Term {
     Float(f32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Prop {
     True,
     False,
@@ -134,14 +138,14 @@ pub enum Prop {
     App { rel: RelId, args: Vec<TermId> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RelKind {
     User,
     SMTInt,
     SMTReal,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RelInfo {
     pub name: String,
     pub arity: usize,

@@ -7,11 +7,13 @@ use std::os::raw::c_char;
 
 use nom::Finish;
 use ast::parser;
+use ast::compile::{compile, Compiler};
 
 use z3::SatResult;
 
 use ast::Module;
-use solver::{GameState, QueryResult};
+use ir::Program;
+use solver::{format_solution, GameState, QueryResult, Solver};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn parse_module(input: *const c_char) -> *mut Module {
@@ -130,38 +132,147 @@ pub unsafe extern "C" fn game_state_query(state: *mut GameState, query: *const c
     }
 }
 
-fn main() {
-    // let args: Vec<String> = env::args().collect();
+pub struct Frontend {
+    pub program: Program,
+}
 
-    // if args.len() != 2 {
-    //     eprintln!("Usage: {} <input_file>", args[0]);
-    //     process::exit(1);
-    // }
+impl Frontend {
+    pub fn new() -> Self {
+        Self {
+            program: Program::default(),
+        }
+    }
 
-    // let filename = &args[1];
+    pub fn load(&mut self, source: &str) -> Result<(), String> {
+        let result = parser::parse_module(source.into()).finish();
+        match result {
+            Ok((_, module)) => {
+                self.program = compile(&module);
+                Ok(())
+            }
+            Err(e) => Err(format!("Parse error: {:?}", e)),
+        }
+    }
 
-    // let contents = fs::read_to_string(filename)
-    //     .unwrap_or_else(|err| {
-    //         eprintln!("Error reading file '{}': {}", filename, err);
-    //         process::exit(1);
-    //     });
+    pub fn query(&mut self, query_str: &str) -> Result<Vec<String>, String> {
+        let term_result = parser::parse_term(query_str.into()).finish();
+        let term = match term_result {
+            Ok((_, term)) => term,
+            Err(e) => return Err(format!("Query parse error: {:?}", e)),
+        };
 
-    // let input = LocatedSpan::new(contents.as_str());
+        let (goal, query_vars) = Compiler::new(&mut self.program).compile_query(&term);
 
-    // match parse_module(input) {
-    //     Ok((remaining, module)) => {
-    //         println!("Successfully parsed module:");
-    //         println!();
-    //         print!("{}", module);
-    //         println!();
+        let mut solver = Solver::new(&mut self.program);
+        let solutions: Vec<_> = solver.query(goal).collect();
 
-    //         if !remaining.fragment().trim().is_empty() {
-    //             println!("Remaining input: {:?}", remaining.fragment());
-    //         }
-    //     }
-    //     Err(err) => {
-    //         eprintln!("Error parsing module: {:?}", err);
-    //         process::exit(1);
-    //     }
-    // }
+        Ok(solutions
+            .iter()
+            .map(|s| format_solution(&query_vars, s, solver.program))
+            .collect())
+    }
+}
+
+impl Default for Frontend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn create_frontend() -> *mut Frontend {
+    Box::leak(Box::new(Frontend::new()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_frontend(frontend: *mut Frontend) {
+    unsafe { std::ptr::drop_in_place(frontend) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_load(frontend: *mut Frontend, source: *const c_char) -> i32 {
+    unsafe {
+        let source_str = CStr::from_ptr(source).to_str().unwrap_or("");
+        match (*frontend).load(source_str) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_query(frontend: *mut Frontend, query: *const c_char) -> *mut c_char {
+    unsafe {
+        let query_str = CStr::from_ptr(query).to_str().unwrap_or("");
+        let result = (*frontend).query(query_str);
+        let output = match result {
+            Ok(solutions) => {
+                if solutions.is_empty() {
+                    "no".to_string()
+                } else {
+                    solutions.join("\n")
+                }
+            }
+            Err(e) => format!("Error: {}", e),
+        };
+        CString::new(output).unwrap().into_raw()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_fact_count(frontend: *mut Frontend) -> i32 {
+    unsafe { (*frontend).program.facts.len() as i32 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_rule_count(frontend: *mut Frontend) -> i32 {
+    unsafe { (*frontend).program.global_rules.len() as i32 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_stage_count(frontend: *mut Frontend) -> i32 {
+    unsafe { (*frontend).program.stages.len() as i32 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn frontend_stage_name(frontend: *mut Frontend, index: i32) -> *mut c_char {
+    unsafe {
+        if let Some(stage) = (&(*frontend).program.stages).get(index as usize) {
+            CString::new(stage.name.clone()).unwrap().into_raw()
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
+fn main() {}
+
+#[cfg(test)]
+mod frontend_tests {
+    use super::*;
+
+    #[test]
+    fn test_position_query() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    position(player, 0, 0)
+End Facts
+
+Begin Global:
+End Global
+"#).unwrap();
+
+        eprintln!("Facts: {}", frontend.program.facts.len());
+        for fact in &frontend.program.facts {
+            eprintln!("  fact rel: {:?}, args: {:?}", fact.rel, fact.args);
+        }
+        eprintln!("Rels:");
+        for (id, rel) in frontend.program.rels.iter() {
+            eprintln!("  {:?}: {:?}", id, rel);
+        }
+        
+        let result = frontend.query("position(player, X, Y)").unwrap();
+        eprintln!("Query result: {:?}", result);
+        assert!(!result.is_empty(), "Expected at least one solution");
+    }
 }

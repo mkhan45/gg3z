@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::ast::{Module, Rel, Rule, Stage, Term, TermContents};
 use crate::ir::{
     Clause, Fact, Program, Prop, PropId, RelId, RelInfo, RelKind, SymbolId, Term as IRTerm,
-    TermId, Var, VarId,
+    TermId, Var,
 };
 
 const SMT_INT_RELATIONS: &[(&str, usize)] = &[
@@ -32,18 +32,23 @@ const SMT_REAL_RELATIONS: &[(&str, usize)] = &[
     ("real_div", 3),
 ];
 
-pub struct Compiler {
-    program: Program,
+pub struct Compiler<'a> {
+    program: &'a mut Program,
     rel_map: HashMap<String, RelId>,
-    var_map: HashMap<String, VarId>,
+    var_map: HashMap<String, TermId>,
     fresh_var_counter: u32,
 }
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(program: &'a mut Program) -> Self {
+        let mut rel_map = HashMap::new();
+        for (id, rel_info) in program.rels.iter() {
+            rel_map.insert(rel_info.name.clone(), id);
+        }
+
         let mut compiler = Self {
-            program: Program::default(),
-            rel_map: HashMap::new(),
+            program,
+            rel_map,
             var_map: HashMap::new(),
             fresh_var_counter: 0,
         };
@@ -74,25 +79,26 @@ impl Compiler {
         id
     }
 
-    fn get_or_create_var(&mut self, name: &str) -> VarId {
+    fn get_or_create_var(&mut self, name: &str) -> TermId {
         if let Some(&id) = self.var_map.get(name) {
             return id;
         }
         let var = Var {
             name: name.to_string(),
         };
-        let id = self.program.vars.alloc(var);
-        self.var_map.insert(name.to_string(), id);
-        id
+        let var_id = self.program.vars.alloc(var);
+        let term_id = self.program.terms.alloc(IRTerm::Var(var_id));
+        self.var_map.insert(name.to_string(), term_id);
+        term_id
     }
 
-    fn fresh_var(&mut self) -> VarId {
+    fn fresh_var(&mut self) -> TermId {
         let name = format!("_G{}", self.fresh_var_counter);
         self.fresh_var_counter += 1;
         let var = Var { name: name.clone() };
-        let id = self.program.vars.alloc(var);
-        self.var_map.insert(name, id);
-        id
+        let var_id = self.program.vars.alloc(var);
+        let term_id = self.program.terms.alloc(IRTerm::Var(var_id));
+        term_id
     }
 
     fn intern_symbol(&mut self, s: &str) -> SymbolId {
@@ -107,17 +113,14 @@ impl Compiler {
         self.program.props.alloc(prop)
     }
 
-    fn clear_rule_scope(&mut self) {
+    fn clear_scope(&mut self) {
         self.var_map.clear();
         self.fresh_var_counter = 0;
     }
 
     fn lower_simple_term(&mut self, term: &Term) -> TermId {
         match &term.contents {
-            TermContents::Var { name } => {
-                let var_id = self.get_or_create_var(name);
-                self.alloc_term(IRTerm::Var(var_id))
-            }
+            TermContents::Var { name } => self.get_or_create_var(name),
             TermContents::Atom { text } => {
                 let sym_id = self.intern_symbol(text);
                 self.alloc_term(IRTerm::Atom(sym_id))
@@ -138,8 +141,7 @@ impl Compiler {
                 };
 
                 if self.is_smt_relation(rel_name) {
-                    let fresh_var_id = self.fresh_var();
-                    let fresh_term_id = self.alloc_term(IRTerm::Var(fresh_var_id));
+                    let fresh_term_id = self.fresh_var();
 
                     let mut lowered_args: Vec<TermId> = args
                         .iter()
@@ -157,8 +159,7 @@ impl Compiler {
 
                     fresh_term_id
                 } else {
-                    let fresh_var_id = self.fresh_var();
-                    let fresh_term_id = self.alloc_term(IRTerm::Var(fresh_var_id));
+                    let fresh_term_id = self.fresh_var();
 
                     let lowered_args: Vec<TermId> = args
                         .iter()
@@ -204,27 +205,44 @@ impl Compiler {
                     Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
                 };
 
-                let mut constraints: Vec<PropId> = Vec::new();
-                let lowered_args: Vec<TermId> = args
-                    .iter()
-                    .map(|a| self.lower_term_arg(a, &mut constraints))
-                    .collect();
+                match rel_name {
+                    "and" => {
+                        let lhs_prop = self.lower_term_to_prop(&args[0]);
+                        let rhs_prop = self.lower_term_to_prop(&args[1]);
+                        let and_prop = Prop::And(lhs_prop, rhs_prop);
+                        self.alloc_prop(and_prop)
+                    }
+                    "or" => {
+                        let lhs_prop = self.lower_term_to_prop(&args[0]);
+                        let rhs_prop = self.lower_term_to_prop(&args[1]);
+                        let or_prop = Prop::Or(lhs_prop, rhs_prop);
+                        self.alloc_prop(or_prop)
+                    }
+                    _ => {
+                        let mut constraints: Vec<PropId> = Vec::new();
+                        let lowered_args: Vec<TermId> = args
+                            .iter()
+                            .map(|a| self.lower_term_arg(a, &mut constraints))
+                            .collect();
 
-                let arity = lowered_args.len();
-                let kind = if self.is_smt_relation(rel_name) {
-                    self.smt_kind(rel_name)
-                } else {
-                    RelKind::User
-                };
-                let rel_id = self.get_or_create_rel(rel_name, arity, kind);
+                        let arity = lowered_args.len();
+                        let kind = if self.is_smt_relation(rel_name) {
+                            self.smt_kind(rel_name)
+                        } else {
+                            RelKind::User
+                        };
 
-                let app_prop = Prop::App {
-                    rel: rel_id,
-                    args: lowered_args,
-                };
-                let app_prop_id = self.alloc_prop(app_prop);
+                        let rel_id = self.get_or_create_rel(rel_name, arity, kind);
 
-                self.conjoin_all(constraints, app_prop_id)
+                        let app_prop = Prop::App {
+                            rel: rel_id,
+                            args: lowered_args,
+                        };
+                        let app_prop_id = self.alloc_prop(app_prop);
+
+                        self.conjoin_all(constraints, app_prop_id)
+                    }
+                }
             }
             _ => {
                 self.alloc_prop(Prop::True)
@@ -246,7 +264,7 @@ impl Compiler {
                     Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
                 };
 
-                self.clear_rule_scope();
+                self.clear_scope();
 
                 let mut constraints: Vec<PropId> = Vec::new();
                 let lowered_args: Vec<TermId> = args
@@ -271,11 +289,11 @@ impl Compiler {
     }
 
     fn lower_rule(&mut self, rule: &Rule) -> Clause {
-        self.clear_rule_scope();
+        self.clear_scope();
 
-        let body = self.lower_term_to_prop(&rule.premise);
+        let premise_body = self.lower_term_to_prop(&rule.premise);
 
-        let (head_rel, head_args) = match &rule.conclusion.contents {
+        let (head_rel, head_args, head_constraints) = match &rule.conclusion.contents {
             TermContents::App { rel, args } => {
                 let rel_name = match rel {
                     Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
@@ -290,13 +308,15 @@ impl Compiler {
                 let arity = lowered_args.len();
                 let rel_id = self.get_or_create_rel(rel_name, arity, RelKind::User);
 
-                (rel_id, lowered_args)
+                (rel_id, lowered_args, constraints)
             }
             _ => {
                 let dummy_rel = self.get_or_create_rel("_true", 0, RelKind::User);
-                (dummy_rel, Vec::new())
+                (dummy_rel, Vec::new(), Vec::new())
             }
         };
+
+        let body = self.conjoin_all(head_constraints, premise_body);
 
         Clause {
             name: rule.name.clone(),
@@ -314,7 +334,16 @@ impl Compiler {
         }
     }
 
-    pub fn compile(mut self, module: &Module) -> Program {
+    pub fn compile_query(&mut self, term: &Term) -> (PropId, Vec<(String, TermId)>) {
+        self.clear_scope();
+        let prop_id = self.lower_term_to_prop(term);
+        let query_vars: Vec<(String, TermId)> = self.var_map.iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        (prop_id, query_vars)
+    }
+
+    pub fn compile_module(&mut self, module: &Module) {
         for fact_term in &module.facts {
             if let Some(fact) = self.lower_fact(fact_term) {
                 self.program.facts.push(fact);
@@ -330,19 +359,13 @@ impl Compiler {
             let ir_stage = self.lower_stage(stage);
             self.program.stages.push(ir_stage);
         }
-
-        self.program
-    }
-}
-
-impl Default for Compiler {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 pub fn compile(module: &Module) -> Program {
-    Compiler::new().compile(module)
+    let mut program = Program::default();
+    Compiler::new(&mut program).compile_module(module);
+    program
 }
 
 #[cfg(test)]

@@ -48,6 +48,11 @@ End Stage Move
             let module_get_stage_name = Module.cwrap('module_get_stage_name', 'string', ['number', 'number']);
             let game_state_query = Module.cwrap('game_state_query', 'string', ['number', 'string']);
 
+            let create_frontend = Module.cwrap('create_frontend', 'number', []);
+            let free_frontend = Module.cwrap('free_frontend', null, ['number']);
+            let frontend_load = Module.cwrap('frontend_load', 'number', ['number', 'string']);
+            let frontend_query = Module.cwrap('frontend_query', 'string', ['number', 'string']);
+
             const reloadBtn = document.querySelector('#reload');
             const stagesSpan = document.querySelector('#stages');
             const inp = document.querySelector('#input');
@@ -57,6 +62,7 @@ End Stage Move
 
             let gameState = create_game_state();
             let currentModule = null;
+            let frontend = create_frontend();
 
             const SAT_RESULTS = ['Sat', 'Unsat', 'Unknown'];
 
@@ -93,6 +99,7 @@ End Stage Move
 
                 game_state_load_facts(gameState, currentModule);
                 game_state_load_global(gameState, currentModule);
+                frontend_load(frontend, code);
                 
                 const result = game_state_check(gameState);
                 out.innerText = module_to_string(currentModule) + '\n\nCheck: ' + SAT_RESULTS[result];
@@ -103,7 +110,7 @@ End Stage Move
             queryBtn.onclick = () => {
                 const queryStr = queryInput.value;
                 if (!queryStr) return;
-                const result = game_state_query(gameState, queryStr);
+                const result = frontend_query(frontend, queryStr);
                 out.innerText += '\n\nQuery: ' + queryStr + '\n' + result;
             };
         </script>
