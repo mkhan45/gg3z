@@ -44,6 +44,23 @@ pub fn parse_rule(s: Span) -> IResult<Span, Rule> {
     }))
 }
 
+fn parse_state_constraints(s: Span) -> IResult<Span, Vec<Term>> {
+    let (s, _) = tag("Begin State Constraints:")(s)?;
+    let (s, _) = line_ending(s)?;
+
+    let (s, constraints) = many0(|s| {
+        let (s, _) = multispace0(s)?;
+        let (s, term) = parse_term(s)?;
+        let (s, _) = line_ending(s)?;
+        Ok((s, term))
+    }).parse(s)?;
+
+    let (s, _) = multispace0(s)?;
+    let (s, _) = tag("End State Constraints")(s)?;
+
+    Ok((s, constraints))
+}
+
 pub fn parse_stage(s: Span) -> IResult<Span, Stage> {
     let (s, _) = position(s)?;
 
@@ -63,6 +80,10 @@ pub fn parse_stage(s: Span) -> IResult<Span, Stage> {
     }).parse(s)?;
 
     let (s, _) = multispace0(s)?;
+    let (s, state_constraints) = opt(parse_state_constraints).parse(s)?;
+    let state_constraints = state_constraints.unwrap_or_default();
+
+    let (s, _) = multispace0(s)?;
     let (s, _) = tag("End Stage")(s)?;
     let (s, _) = multispace1(s)?;
 
@@ -78,7 +99,25 @@ pub fn parse_stage(s: Span) -> IResult<Span, Stage> {
     Ok((s, Stage {
         name: name.to_string(),
         rules,
+        state_constraints,
     }))
+}
+
+fn parse_state_var(s: Span) -> IResult<Span, String> {
+    let (s, _) = tag("StateVar")(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, name) = parse_identifier(s)?;
+
+    if !name.chars().next().unwrap().is_uppercase() {
+        return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
+    }
+
+    Ok((s, name.to_string()))
+}
+
+enum FactOrStateVar {
+    Fact(Term),
+    StateVar(String),
 }
 
 pub fn parse_module(s: Span) -> IResult<Span, Module> {
@@ -88,12 +127,30 @@ pub fn parse_module(s: Span) -> IResult<Span, Module> {
     let (s, _) = tag("Begin Facts:")(s)?;
     let (s, _) = line_ending(s)?;
 
-    let (s, facts) = many0(|s| {
+    let (s, items) = many0(|s| {
         let (s, _) = multispace0(s)?;
-        let (s, term) = parse_term(s)?;
+        let (s, item) = alt((
+            |s| {
+                let (s, sv) = parse_state_var(s)?;
+                Ok((s, FactOrStateVar::StateVar(sv)))
+            },
+            |s| {
+                let (s, term) = parse_term(s)?;
+                Ok((s, FactOrStateVar::Fact(term)))
+            },
+        )).parse(s)?;
         let (s, _) = line_ending(s)?;
-        Ok((s, term))
+        Ok((s, item))
     }).parse(s)?;
+
+    let mut state_vars = Vec::new();
+    let mut facts = Vec::new();
+    for item in items {
+        match item {
+            FactOrStateVar::StateVar(sv) => state_vars.push(sv),
+            FactOrStateVar::Fact(t) => facts.push(t),
+        }
+    }
 
     let (s, _) = multispace0(s)?;
     let (s, _) = tag("End Facts")(s)?;
@@ -117,6 +174,7 @@ pub fn parse_module(s: Span) -> IResult<Span, Module> {
     let global_stage = Stage {
         name: "Global".to_string(),
         rules: global_rules,
+        state_constraints: Vec::new(),
     };
 
     let (s, stages) = many0(|s| {
@@ -127,6 +185,7 @@ pub fn parse_module(s: Span) -> IResult<Span, Module> {
     }).parse(s)?;
 
     Ok((s, Module {
+        state_vars,
         facts,
         global_stage,
         stages,

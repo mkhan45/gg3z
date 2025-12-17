@@ -6,70 +6,32 @@
     <body>
         <textarea id="input" style="width: 80vw; height: 30em">
 Begin Facts:
-    true()
-    eq(L, cons(1, cons(2, cons(3, cons(4, nil)))))
+    StateVar Health
+    StateVar Score
+    eq(Health, 100)
+    eq(Score, 0)
 End Facts
 
 Begin Global:
-    Rule SameLenBase:
-    true()
-    -----------------
-    sameLength(nil, nil)
-
-    Rule SameLenRec:
-    sameLength(Xs, Ys)
-    ------------------
-    sameLength(cons(Xh, Xs), cons(Yh, Ys))
-
-    Rule ContainsHead:
-    true()
-    ------------------
-    contains(cons(X, Xs), X)
-
-    Rule ContainsTail:
-    contains(Xs, X)
-    ---------------
-    contains(cons(Y, Xs), X)
-
-    Rule ContainsAllBase:
-    true()
-    ---------------------
-    containsAll(nil, L2)
-
-    Rule ContainsAllRec:
-    and(contains(L2, X), containsAll(Xs, L2))
-    -----------------------------------------
-    containsAll(cons(X, Xs), L2)
-
-    Rule AppendBase:
-    true()
-    ----------------
-    append(nil, X, cons(X, nil))
-
-    Rule AppendRec:
-    append(Xs, X, Ys)
-    -----------------
-    append(cons(Xh, Xs), X, cons(Xh, Ys))
-
-    Rule ReverseBase:
-    true()
-    -----------------
-    reverseOf(nil, nil)
-
-    Rule ReverseRec:
-    and(reverseOf(Xs, Yp), append(Yp, Xh, Y))
-    -----------------------------------------
-    reverseOf(cons(Xh, Xs), Y)
-
-    Rule Palindrome:
-    reverseOf(X, X)
-    ---------------
-    palindrome(X)
 End Global
+
+Begin Stage TakeDamage:
+Begin State Constraints:
+    int_sub(Health, 10, next(Health))
+End State Constraints
+End Stage TakeDamage
+
+Begin Stage GainScore:
+Begin State Constraints:
+    int_add(Score, 25, next(Score))
+End State Constraints
+End Stage GainScore
         </textarea>
         <br/>
         <button id="reload">Reload</button>
         <span id="stages"></span>
+        <br/>
+        <div id="state-vars" style="margin: 10px 0; padding: 10px; background: #f0f0f0; font-family: monospace;"></div>
         <br/>
         <label for="strategy-select">Strategy:</label>
         <select id="strategy-select">
@@ -78,7 +40,7 @@ End Global
         </select>
         <label for="max-steps-input">Max steps:</label>
         <input id="max-steps-input" type="number" value="10000" style="width: 80px"></input>
-        <input id="query-input" type="text" value="and(containsAll(L, A), palindrome(A))" style="width: 300px"></input>
+        <input id="query-input" type="text" value="eq(Health, X)" style="width: 300px"></input>
         <button id="query-btn">Query</button>
         <button id="next-btn" disabled>Next</button>
         <button id="stop-btn" disabled>Stop</button>
@@ -118,9 +80,14 @@ End Global
             let frontend_query_next = Module.cwrap('frontend_query_next', 'string', ['number']);
             let frontend_has_more = Module.cwrap('frontend_has_more', 'number', ['number']);
             let frontend_query_stop = Module.cwrap('frontend_query_stop', null, ['number']);
+            let frontend_run_stage = Module.cwrap('frontend_run_stage', 'number', ['number', 'number']);
+            let frontend_state_var_count = Module.cwrap('frontend_state_var_count', 'number', ['number']);
+            let frontend_state_var_name = Module.cwrap('frontend_state_var_name', 'string', ['number', 'number']);
+            let frontend_state_var_value = Module.cwrap('frontend_state_var_value', 'string', ['number', 'number']);
 
             const reloadBtn = document.querySelector('#reload');
             const stagesSpan = document.querySelector('#stages');
+            const stateVarsDiv = document.querySelector('#state-vars');
             const inp = document.querySelector('#input');
             const out = document.querySelector('#output');
             const queryInput = document.querySelector('#query-input');
@@ -132,6 +99,21 @@ End Global
 
             let currentModule = null;
             let frontend = create_frontend();
+
+            function updateStateVars() {
+                const count = frontend_state_var_count(frontend);
+                if (count === 0) {
+                    stateVarsDiv.innerHTML = '<em>No state variables</em>';
+                    return;
+                }
+                let html = '<strong>State Variables:</strong><br/>';
+                for (let i = 0; i < count; i++) {
+                    const name = frontend_state_var_name(frontend, i);
+                    const value = frontend_state_var_value(frontend, i);
+                    html += `  ${name} = ${value}<br/>`;
+                }
+                stateVarsDiv.innerHTML = html;
+            }
 
             strategySelect.onchange = () => {
                 frontend_set_strategy(frontend, parseInt(strategySelect.value));
@@ -145,10 +127,17 @@ End Global
                 stagesSpan.innerHTML = '';
                 const count = frontend_stage_count(frontend);
                 for (let i = 0; i < count; i++) {
+                    const stageIndex = i;
                     const btn = document.createElement('button');
                     btn.textContent = frontend_stage_name(frontend, i);
                     btn.onclick = () => {
-                        out.innerText += '\nStage: ' + btn.textContent + ' (stage execution not yet implemented)';
+                        const result = frontend_run_stage(frontend, stageIndex);
+                        if (result === 1) {
+                            out.innerText += '\nRan stage: ' + btn.textContent;
+                            updateStateVars();
+                        } else {
+                            out.innerText += '\nStage failed: ' + btn.textContent;
+                        }
                     };
                     stagesSpan.appendChild(btn);
                 }
@@ -180,6 +169,7 @@ End Global
                 out.innerText = 'Loaded: ' + factCount + ' facts, ' + ruleCount + ' global rules, ' + stageCount + ' stages';
                 
                 buildStageButtons();
+                updateStateVars();
             };
 
             function updateButtons() {

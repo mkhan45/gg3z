@@ -8,6 +8,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub state_vars: Vec<String>,
     pub facts: Vec<Term>,
     pub global_stage: Stage,
     pub stages: Vec<Stage>,
@@ -17,6 +18,7 @@ pub struct Module {
 pub struct Stage {
     pub name: String,
     pub rules: Vec<Rule>,
+    pub state_constraints: Vec<Term>,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +98,13 @@ impl fmt::Display for Stage {
         for rule in &self.rules {
             write!(f, "{}", rule)?;
         }
+        if !self.state_constraints.is_empty() {
+            writeln!(f, "Begin State Constraints:")?;
+            for constraint in &self.state_constraints {
+                writeln!(f, "    {}", constraint)?;
+            }
+            writeln!(f, "End State Constraints")?;
+        }
         writeln!(f, "End Stage {}", self.name)
     }
 }
@@ -103,6 +112,9 @@ impl fmt::Display for Stage {
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Begin Facts:")?;
+        for state_var in &self.state_vars {
+            writeln!(f, "    StateVar {}", state_var)?;
+        }
         for fact in &self.facts {
             writeln!(f, "    {}", fact)?;
         }

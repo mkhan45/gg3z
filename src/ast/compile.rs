@@ -36,6 +36,7 @@ pub struct Compiler<'a> {
     program: &'a mut Program,
     rel_map: HashMap<String, RelId>,
     var_map: HashMap<String, TermId>,
+    next_var_map: HashMap<String, TermId>,
     fresh_var_counter: u32,
 }
 
@@ -50,6 +51,7 @@ impl<'a> Compiler<'a> {
             program,
             rel_map,
             var_map: HashMap::new(),
+            next_var_map: HashMap::new(),
             fresh_var_counter: 0,
         };
         compiler.register_builtin_relations();
@@ -66,6 +68,7 @@ impl<'a> Compiler<'a> {
             program,
             rel_map,
             var_map,
+            next_var_map: HashMap::new(),
             fresh_var_counter: 0,
         };
         compiler.register_builtin_relations();
@@ -135,7 +138,22 @@ impl<'a> Compiler<'a> {
 
     fn clear_scope(&mut self) {
         self.var_map.clear();
+        self.next_var_map.clear();
         self.fresh_var_counter = 0;
+    }
+
+    fn get_or_create_next_var(&mut self, name: &str) -> TermId {
+        if let Some(&id) = self.next_var_map.get(name) {
+            return id;
+        }
+        let next_name = format!("_next_{}", name);
+        let var = Var {
+            name: next_name.clone(),
+        };
+        let var_id = self.program.vars.alloc(var);
+        let term_id = self.program.terms.alloc(IRTerm::Var(var_id));
+        self.next_var_map.insert(name.to_string(), term_id);
+        term_id
     }
 
     fn lower_simple_term(&mut self, term: &Term) -> TermId {
@@ -159,6 +177,12 @@ impl<'a> Compiler<'a> {
                 let rel_name = match rel {
                     Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
                 };
+
+                if rel_name == "next" && args.len() == 1 {
+                    if let TermContents::Var { name } = &args[0].contents {
+                        return self.get_or_create_next_var(name);
+                    }
+                }
 
                 if self.is_smt_relation(rel_name) {
                     let fresh_term_id = self.fresh_var();
@@ -314,11 +338,23 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn lower_stage(&mut self, stage: &Stage) -> crate::ir::Stage {
+    fn lower_stage(&mut self, stage: &Stage, fact_var_map: &HashMap<String, TermId>) -> crate::ir::Stage {
         let rules = stage.rules.iter().map(|r| self.lower_rule(r)).collect();
+        
+        self.var_map = fact_var_map.clone();
+        self.next_var_map.clear();
+        let state_constraints = stage.state_constraints
+            .iter()
+            .map(|t| self.lower_term_to_prop(t))
+            .collect();
+        
+        let next_var_map = self.next_var_map.clone();
+        
         crate::ir::Stage {
             name: stage.name.clone(),
             rules,
+            state_constraints,
+            next_var_map,
         }
     }
 
@@ -331,12 +367,20 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile_module(&mut self, module: &Module) {
+        self.program.state_vars = module.state_vars.clone();
+
         for fact_term in &module.facts {
             let fact_prop = self.lower_fact(fact_term);
             self.program.facts.push(fact_prop);
         }
 
         let fact_var_map = self.var_map.clone();
+        
+        for state_var_name in &module.state_vars {
+            if let Some(&term_id) = fact_var_map.get(state_var_name) {
+                self.program.state_var_term_ids.insert(state_var_name.clone(), term_id);
+            }
+        }
 
         for rule in &module.global_stage.rules {
             let clause = self.lower_rule(rule);
@@ -344,7 +388,7 @@ impl<'a> Compiler<'a> {
         }
 
         for stage in &module.stages {
-            let ir_stage = self.lower_stage(stage);
+            let ir_stage = self.lower_stage(stage, &fact_var_map);
             self.program.stages.push(ir_stage);
         }
 

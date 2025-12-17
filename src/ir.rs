@@ -213,6 +213,8 @@ pub struct Clause {
 pub struct Stage {
     pub name: String,
     pub rules: Vec<Clause>,
+    pub state_constraints: Vec<PropId>,
+    pub next_var_map: std::collections::HashMap<String, TermId>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -222,6 +224,8 @@ pub struct Program {
     pub vars: Arena<Var>,
     pub symbols: Interner<String>,
     pub rels: Arena<RelInfo>,
+    pub state_vars: Vec<String>,
+    pub state_var_term_ids: std::collections::HashMap<String, TermId>,
     pub facts: Vec<PropId>,
     pub global_rules: Vec<Clause>,
     pub stages: Vec<Stage>,

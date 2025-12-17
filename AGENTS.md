@@ -525,6 +525,98 @@ real_add, real_sub, real_mul, real_div
 
 ---
 
+# State Variables and Constraints
+
+Langame supports mutable state variables for game-oriented programming, updated via deterministic state constraints.
+
+## State Variable Declarations
+
+Declare state variables in the Facts section using `StateVar`:
+
+```
+Begin Facts:
+    StateVar Health
+    StateVar Score
+    eq(Health, 100)
+    eq(Score, 0)
+End Facts
+```
+
+State variables are regular variables that:
+- Are tracked by the runtime for state transitions
+- Can be queried via `get_state_var(name)` and `state_vars()`
+- Are updated atomically when running a stage
+
+## State Constraints
+
+Stages can include a `State Constraints` section that defines how state variables update between game ticks:
+
+```
+Begin Stage Update:
+Begin State Constraints:
+    int_sub(Health, 5, next(Health))
+    int_add(Score, 10, next(Score))
+End State Constraints
+End Stage Update
+```
+
+## The `next()` Intrinsic
+
+The `next(VarName)` intrinsic references the "next" value of a state variable:
+
+- **Syntax**: `next(VarName)` where `VarName` is a declared state variable
+- **Purpose**: Creates a fresh variable for the next state value, separate from the current bound value
+- **Constraint semantics**: The constraint solver determines what value `next(X)` should take
+
+**Why `next()` is necessary:**
+Without `next()`, both references to a state variable resolve to the same bound value. For example, `int_sub(Health, 1, Health)` would require `Health - 1 = Health`, which is unsatisfiable. Using `next(Health)` creates a distinct variable for the output.
+
+**Examples:**
+```
+int_sub(Health, 1, next(Health))     # next Health = current Health - 1
+int_add(Score, 10, next(Score))      # next Score = current Score + 10
+choice(next(X))                      # next X = some choice (must be unique)
+```
+
+## Unique Solution Enforcement
+
+State constraints must have exactly one solution. The runtime errors if:
+- **Zero solutions**: Constraints are unsatisfiable
+- **Multiple solutions**: Constraints are ambiguous (non-deterministic)
+
+Example of ambiguous constraints (will error):
+```
+Begin Facts:
+    StateVar X
+    eq(X, 1)
+    choice(a)
+    choice(b)
+End Facts
+
+Begin Stage Ambiguous:
+Begin State Constraints:
+    choice(next(X))    # Error: two solutions (a and b)
+End State Constraints
+End Stage Ambiguous
+```
+
+## Frontend API for State
+
+- `run_stage(stage_index)`: Execute a stage's state constraints, updating state variables
+- `run_stage_by_name(name)`: Execute a stage by name
+- `get_state_var(name)` → `Option<String>`: Get current value of a state variable
+- `state_vars()` → `Vec<(String, Option<String>)>`: Get all state variables and their values
+
+**FFI Functions:**
+- `frontend_run_stage(frontend, stage_index)` → `i32`: Returns 1 on success, 0 on error
+- `frontend_run_stage_by_name(frontend, name)` → `i32`: Returns 1 on success, 0 on error  
+- `frontend_get_state_var(frontend, name)` → `char*`: Returns value or empty string
+- `frontend_state_var_count(frontend)` → `i32`: Number of state variables
+- `frontend_state_var_name(frontend, index)` → `char*`: Name of state variable at index
+- `frontend_state_var_value(frontend, index)` → `char*`: Value of state variable at index
+
+---
+
 # Frontend (src/main.rs)
 
 ## Frontend struct
