@@ -532,18 +532,82 @@ real_add, real_sub, real_mul, real_div
 pub struct Frontend {
     pub program: Program,
     pub var_map: HashMap<String, TermId>,
+    pub strategy: SearchStrategy,
+    pub max_steps: usize,
+    pending_queue: Option<SearchQueue>,
+    pending_query_vars: Vec<(String, TermId)>,
 }
 ```
 
+### Batch Query Methods
 - `load(source)`: Parses and compiles source string, stores var_map from compilation
 - `query(query_str)`: Runs query with default limit (10 solutions)
 - `query_with_limit(query_str, n)`: Custom solution limit
+- `query_with_limit_and_steps(query_str, n, max_steps)`: Custom limit and step budget
+
+### Incremental Query Methods
+
+The solver supports incremental query solving, finding solutions one at a time instead of collecting all at once. This is useful for:
+- Interactive exploration of infinite solution spaces
+- UI responsiveness when solutions are expensive to compute
+- Early termination when only a few solutions are needed
+
+**API:**
+- `query_start(query_str)` → `Result<Option<String>, String>`: Starts a new incremental query, returns first solution (or None if no solutions)
+- `query_next()` → `Option<String>`: Continues from saved queue, returns next solution
+- `has_more_solutions()` → `bool`: Checks if queue is non-empty (more solutions may exist)
+- `query_stop()`: Clears pending query state
+
+**How it works:**
+1. `query_start` initializes a `SearchQueue` and runs `step_until_solution` until finding one solution or exhausting `max_steps`
+2. The remaining `SearchQueue` is saved in `pending_queue`
+3. `query_next` resumes from the saved queue, again running until one solution or `max_steps`
+4. `max_steps` limits steps *between* solutions, not total steps for the entire query
+
+**Example usage (Rust):**
+```rust
+let mut frontend = Frontend::new();
+frontend.load("...")?;
+frontend.max_steps = 1000;
+
+if let Some(first) = frontend.query_start("num(X)")? {
+    println!("First: {}", first);
+    while let Some(next) = frontend.query_next() {
+        println!("Next: {}", next);
+    }
+}
+frontend.query_stop();
+```
+
+### Solver Low-Level API
+
+For more control, use the `Solver` directly:
+
+- `Solver::init_query(goal, strategy)` → `SearchQueue`: Initializes a queue for a new query
+- `Solver::step_until_solution(queue, max_steps)` → `(Option<State>, SearchQueue)`: Runs until one solution found or max_steps exhausted, returns remaining queue for continuation
 
 ## FFI Functions
+
 All public functionality exposed via C FFI for JS/WASM integration:
+
+**Lifecycle:**
 - `create_frontend`, `free_frontend`
+
+**Loading & Batch Query:**
 - `frontend_load`, `frontend_query`
-- `frontend_fact_count`, `frontend_rule_count`, `frontend_stage_count`
+- `frontend_fact_count`, `frontend_rule_count`, `frontend_stage_count`, `frontend_stage_name`
+
+**Incremental Query:**
+- `frontend_query_start(frontend, query)` → `char*`: Start query, returns first solution or "no"
+- `frontend_query_next(frontend)` → `char*`: Get next solution or "no"
+- `frontend_has_more(frontend)` → `i32`: Returns 1 if more solutions may exist, 0 otherwise
+- `frontend_query_stop(frontend)`: Clear pending query state
+
+**Configuration:**
+- `frontend_set_strategy(frontend, strategy)`: Set search strategy (0=BFS, 1=DFS)
+- `frontend_get_strategy(frontend)` → `i32`: Get current strategy
+- `frontend_set_max_steps(frontend, max_steps)`: Set max steps per solution
+- `frontend_get_max_steps(frontend)` → `i32`: Get current max steps
 
 **Key constraint**: `main()` is empty - everything uses FFI for JS integration.
 
