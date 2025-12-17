@@ -1,6 +1,11 @@
 mod engine;
+pub mod ir;
 
 pub use engine::{
     format_solution, reify_term, ArithConstraint, ConstraintStore, SearchQueue, SearchStrategy,
     SolutionIter, Solver, State, Subst,
 };
+
+#[path = "../solver/state_tests.rs"]
+#[cfg(test)]
+mod state_tests;

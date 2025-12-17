@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ast::{Module, Rel, Rule, Stage, Term, TermContents};
-use crate::ir::{
-    Clause, Program, Prop, PropId, RelId, RelInfo, RelKind, SymbolId, Term as IRTerm,
-    TermId, Var,
+use crate::solver::ir::{
+    Clause, Program, Prop, PropId, RelId, RelInfo, RelKind, Stage as IrStage, SymbolId,
+    Term as IRTerm, TermId, Var,
 };
 
 const SMT_INT_RELATIONS: &[(&str, usize)] = &[
@@ -315,7 +315,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn lower_stage(&mut self, stage: &Stage, fact_var_map: &HashMap<String, TermId>) -> crate::ir::Stage {
+    fn lower_stage(&mut self, stage: &Stage, fact_var_map: &HashMap<String, TermId>) -> IrStage {
         let rules = stage.rules.iter().map(|r| self.lower_rule(r, fact_var_map)).collect();
         
         self.var_map = fact_var_map.clone();
@@ -327,7 +327,7 @@ impl<'a> Compiler<'a> {
         
         let next_var_map = self.next_var_map.clone();
         
-        crate::ir::Stage {
+        IrStage {
             name: stage.name.clone(),
             rules,
             state_constraints,

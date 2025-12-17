@@ -314,8 +314,7 @@ struct Frontend {
 
 ---
 
-## Known Bug Fixes
+## Other Guidelines
 
-1. **State facts in constraint solving**: `run_stage()` must clone `program.facts` into solver goals before solving state constraints.
-
-2. **`not()` with SMT constraints**: Negation must check constraint satisfiability—a proof sketch with unsatisfiable constraints is not a valid proof.
+- Avoid using `mod.rs`. Instead, for a module `example`, use an `example.rs` file and an `example/` directory.
+- Prefer higher-level conceptual reasoning to concrete code reasoning. Motivate code changes with a mental model of the problem when applicable.
