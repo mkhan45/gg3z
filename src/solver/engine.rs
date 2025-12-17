@@ -504,6 +504,16 @@ impl<'p> Solver<'p> {
     fn rename_term(&mut self, term_id: TermId, var_map: &mut HashMap<VarId, TermId>) -> TermId {
         match self.program.terms.get(term_id).clone() {
             Term::Var(v) => {
+                // Check if this is a state variable - if so, don't rename it
+                // Only skip renaming if this is the original state var term ID (still a Var)
+                let var_name = &self.program.vars.get(v).name;
+                if let Some(&original_state_var_term_id) = self.program.state_var_term_ids.get(var_name) {
+                    if original_state_var_term_id == term_id {
+                        // State variables should keep their original binding
+                        return term_id;
+                    }
+                }
+                
                 if let Some(&new_term) = var_map.get(&v) {
                     new_term
                 } else {
@@ -589,7 +599,9 @@ impl<'p> Solver<'p> {
             Prop::True => {
                 queue.push(state);
             }
-            Prop::False => {}
+            Prop::False => {
+                queue.pop();
+            }
             Prop::Eq(t1, t2) => {
                 if let Some(new_subst) = state.subst.unify(t1, t2, &self.program.terms) {
                     queue.push(state.with_subst(new_subst));
@@ -606,15 +618,31 @@ impl<'p> Solver<'p> {
             Prop::Not(p) => {
                 let mut neg_queue = SearchQueue::new();
                 neg_queue.push(state.clone().with_goal(p));
+                
+                let mut found_valid_solution = false;
 
                 while let Some(neg_state) = neg_queue.pop() {
                     if let Some((goal, remaining)) = neg_state.pop_goal() {
                         self.step_prop(remaining, goal, &mut neg_queue);
                     } else {
-                        return;
+                        // Found a complete proof state - verify constraints are satisfiable
+                        // A "solution" with unsatisfiable constraints isn't a real solution.
+                        // Only fail negation if the goal has a VALID proof (constraints satisfy).
+                        if let Some(_solved_subst) = neg_state.constraints.solve(&neg_state.subst, self.program, &self.z3_solver) {
+                            // The goal has a valid proof with satisfied constraints
+                            // So negation fails
+                            found_valid_solution = true;
+                            break;
+                        }
+                        // else: constraints unsatisfiable, continue checking other branches
                     }
                 }
-                queue.push(state);
+                
+                // Only push state if we didn't find a valid solution for the goal
+                if !found_valid_solution {
+                    queue.push(state);
+                }
+                // If found_valid_solution=true, we don't push, so negation fails (state removed from queue)
             }
             Prop::App { rel, args } => {
                 let rel_info = self.program.rels.get(rel).clone();

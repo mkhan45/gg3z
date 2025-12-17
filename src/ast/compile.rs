@@ -249,6 +249,11 @@ impl<'a> Compiler<'a> {
                         let or_prop = Prop::Or(lhs_prop, rhs_prop);
                         self.alloc_prop(or_prop)
                     }
+                    "not" => {
+                        let prop = self.lower_term_to_prop(&args[0]);
+                        let not_prop = Prop::Not(prop);
+                        self.alloc_prop(not_prop)
+                    }
                     "eq" if args.len() == 2 => {
                         let mut constraints: Vec<PropId> = Vec::new();
                         let t1 = self.lower_term_arg(&args[0], &mut constraints);
@@ -300,8 +305,13 @@ impl<'a> Compiler<'a> {
         self.lower_term_to_prop(term)
     }
 
-    fn lower_rule(&mut self, rule: &Rule) -> Clause {
+    fn lower_rule(&mut self, rule: &Rule, fact_var_map: &HashMap<String, TermId>) -> Clause {
         self.clear_scope();
+        
+        // Restore fact variables so rules can reference state variables from facts
+        for (name, term_id) in fact_var_map {
+            self.var_map.insert(name.clone(), *term_id);
+        }
 
         let premise_body = self.lower_term_to_prop(&rule.premise);
 
@@ -339,7 +349,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn lower_stage(&mut self, stage: &Stage, fact_var_map: &HashMap<String, TermId>) -> crate::ir::Stage {
-        let rules = stage.rules.iter().map(|r| self.lower_rule(r)).collect();
+        let rules = stage.rules.iter().map(|r| self.lower_rule(r, fact_var_map)).collect();
         
         self.var_map = fact_var_map.clone();
         self.next_var_map.clear();
@@ -383,7 +393,7 @@ impl<'a> Compiler<'a> {
         }
 
         for rule in &module.global_stage.rules {
-            let clause = self.lower_rule(rule);
+            let clause = self.lower_rule(rule, &fact_var_map);
             self.program.global_rules.push(clause);
         }
 

@@ -4,7 +4,7 @@ Begin Facts:
     StateVar ObstacleX
     eq(RunnerY, 0.0)
     eq(RunnerVY, 0.0)
-    eq(ObstacleX, 50.0)
+    eq(ObstacleX, 30.0)
 End Facts
 
 Begin Global:

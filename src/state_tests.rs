@@ -254,4 +254,323 @@ End Stage TestStage
         assert_eq!(module.stages.len(), 1);
         assert_eq!(module.stages[0].state_constraints.len(), 1);
     }
+
+    #[test]
+    fn test_runner_should_jump_rule() {
+        let input = std::fs::read_to_string("sample/runner.l")
+            .expect("Failed to read sample/runner.l");
+        
+        let mut frontend = Frontend::new();
+        frontend.load(&input).unwrap();
+
+        // Verify state variables are initialized correctly
+        assert_eq!(frontend.get_state_var("RunnerY").unwrap(), "0");
+        assert_eq!(frontend.get_state_var("RunnerVY").unwrap(), "0");
+        assert_eq!(frontend.get_state_var("ObstacleX").unwrap(), "30");
+
+        // shouldJump should fail because ObstacleX is 30, which is not in range [8, 18]
+        match frontend.query_start("shouldJump()") {
+            Ok(None) => {}, // Expected: no solution
+            Ok(Some(sol)) => {
+                eprintln!("DEBUG: shouldJump matched with solution: {}", sol);
+                panic!("shouldJump() should not match when ObstacleX=30")
+            },
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+        
+        // Test the compound condition directly - should also fail
+        match frontend.query_start("and(real_eq(RunnerY, 0.0), and(real_ge(ObstacleX, 8.0), real_le(ObstacleX, 18.0)))") {
+            Ok(None) => {}, // Expected: no solution
+            Ok(Some(sol)) => {
+                eprintln!("DEBUG: Compound query matched with solution: {}", sol);
+                panic!("Compound condition should not match when ObstacleX=30")
+            },
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_runner_should_jump_in_range() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    StateVar RunnerY
+    StateVar RunnerVY
+    StateVar ObstacleX
+    eq(RunnerY, 0.0)
+    eq(RunnerVY, 0.0)
+    eq(ObstacleX, 10.0)
+End Facts
+
+Begin Global:
+Rule ShouldJump:
+    and(real_eq(RunnerY, 0.0), and(real_ge(ObstacleX, 8.0), real_le(ObstacleX, 18.0)))
+    ---------------------------------------------------------------------------------
+    shouldJump()
+End Global
+"#).unwrap();
+
+        // Verify state variables
+        assert_eq!(frontend.get_state_var("RunnerY").unwrap(), "0");
+        assert_eq!(frontend.get_state_var("ObstacleX").unwrap(), "10");
+
+        // shouldJump should succeed because ObstacleX is 10, which is in range [8, 18]
+        match frontend.query_start("shouldJump()") {
+            Ok(Some(_)) => {}, // Expected: solution found
+            Ok(None) => panic!("shouldJump() should match when RunnerY=0 and ObstacleX=10"),
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_simple_real_constraint() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    StateVar X
+    eq(X, 50.0)
+End Facts
+
+Begin Global:
+End Global
+"#).unwrap();
+
+        // Direct constraint test: should fail because X is 50, not less than 18
+        match frontend.query_start("real_le(X, 18.0)") {
+            Ok(None) => {}, // Expected: no solution
+            Ok(Some(sol)) => panic!("real_le(X, 18.0) should fail when X=50, but got: {}", sol),
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+
+        // This should succeed: X is 50, which is >= 8
+        match frontend.query_start("real_ge(X, 8.0)") {
+            Ok(Some(_)) => {}, // Expected: solution found
+            Ok(None) => panic!("real_ge(X, 8.0) should match when X=50"),
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_and_constraint() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    StateVar X
+    eq(X, 50.0)
+End Facts
+
+Begin Global:
+End Global
+"#).unwrap();
+
+        // This should fail: X is 50, so (X >= 8) AND (X <= 18) is false (second part fails)
+        match frontend.query_start("and(real_ge(X, 8.0), real_le(X, 18.0))") {
+            Ok(None) => {}, // Expected: no solution
+            Ok(Some(sol)) => {
+                eprintln!("DEBUG: and(real_ge(X, 8.0), real_le(X, 18.0)) matched when X=50: {}", sol);
+                panic!("and constraint should fail when X=50")
+            },
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_rule_with_state_var_constraint() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    StateVar X
+    eq(X, 50.0)
+End Facts
+
+Begin Global:
+Rule TestRule:
+    and(real_ge(X, 8.0), real_le(X, 18.0))
+    -----------------------------------------------
+    test_pred()
+End Global
+"#).unwrap();
+
+        // Query the rule: should fail because X is 50, which fails the second constraint
+        match frontend.query_start("test_pred()") {
+            Ok(None) => {}, // Expected: no solution
+            Ok(Some(sol)) => {
+                eprintln!("DEBUG: test_pred() matched when X=50: {}", sol);
+                panic!("test_pred() should fail when X=50")
+            },
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_query_after_stage_execution() {
+        let input = std::fs::read_to_string("sample/state_basic.l")
+            .expect("Failed to read sample/state_basic.l");
+        
+        let mut frontend = Frontend::new();
+        frontend.load(&input).unwrap();
+
+        // Query before stage - baseline
+        match frontend.query_start("eq(1, 1)") {
+            Ok(Some(_)) => {}, // Expected
+            Ok(None) => panic!("eq(1, 1) should work before stage"),
+            Err(e) => panic!("Query failed before stage: {}", e),
+        }
+
+        // Run the stage
+        frontend.run_stage(0).expect("Stage should succeed");
+        assert_eq!(frontend.get_state_var("Health").unwrap(), "9");
+
+        // Query after stage should still work - simple query
+        match frontend.query_start("eq(1, 1)") {
+            Ok(Some(_)) => {}, // Expected: solution found
+            Ok(None) => {
+                panic!("eq(1, 1) should always succeed after running a stage")
+            },
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+
+        // Test with state variables
+        match frontend.query_start("eq(Health, 9)") {
+            Ok(Some(_)) => {}, // Expected: solution found (Health was just set to 9)
+            Ok(None) => panic!("eq(Health, 9) should succeed after running stage"),
+            Err(e) => panic!("Query failed with error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_query_after_runner_stage() {
+        let input = std::fs::read_to_string("sample/runner.l")
+            .expect("Failed to read sample/runner.l");
+        
+        let mut frontend = Frontend::new();
+        frontend.load(&input).unwrap();
+
+        // Query before stage
+        match frontend.query_start("eq(1, 1)") {
+            Ok(Some(_)) => {}, // Expected
+            Ok(None) => panic!("eq(1, 1) should work before stage"),
+            Err(e) => panic!("Query failed before stage: {}", e),
+        }
+
+        // Run Control stage (uses shouldJump rule)
+        frontend.run_stage_by_name("Control").expect("Control stage should succeed");
+
+        // Query after stage
+        match frontend.query_start("eq(1, 1)") {
+            Ok(Some(_)) => {}, // Expected
+            Ok(None) => panic!("eq(1, 1) should work after Control stage"),
+            Err(e) => panic!("Query failed after Control stage: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_or_with_not_simple() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    eq(1, 1)
+End Facts
+
+Begin Global:
+Rule AlwaysTrue:
+    eq(1, 1)
+    --------
+    truePred()
+End Global
+"#).unwrap();
+
+        // First verify truePred works
+        eprintln!("TEST 1: Direct truePred query");
+        match frontend.query_start("truePred()") {
+            Ok(Some(sol)) => {
+                eprintln!("  Result: success - {}", sol);
+            },
+            Ok(None) => {
+                eprintln!("  Result: no solution");
+                panic!("truePred() should succeed");
+            },
+            Err(e) => {
+                eprintln!("  Result: error - {}", e);
+                panic!("Query failed: {}", e);
+            },
+        }
+
+        // Test: or(truePred(), not(truePred()))  
+        // First branch should succeed, so or should succeed
+        eprintln!("TEST 2: or(truePred(), not(truePred()))");
+        match frontend.query_start("or(truePred(), not(truePred()))") {
+            Ok(Some(sol)) => {
+                eprintln!("  Result: success - {}", sol);
+            },
+            Ok(None) => {
+                eprintln!("  Result: no solution");
+                panic!("or(truePred(), not(truePred())) should always succeed");
+            },
+            Err(e) => {
+                eprintln!("  Result: error - {}", e);
+                panic!("Query failed: {}", e);
+            },
+        }
+    }
+
+    #[test]
+    fn test_not_with_smt_constraints() {
+        let mut frontend = Frontend::new();
+        frontend.load(r#"Begin Facts:
+    StateVar ObstacleX
+    eq(ObstacleX, 30.0)
+End Facts
+
+Begin Global:
+Rule ShouldJump:
+    real_ge(ObstacleX, 8.0)
+    -------------------------
+    shouldJump()
+End Global
+"#).unwrap();
+
+        // Direct test: shouldJump should succeed (ObstacleX >= 8.0)
+        eprintln!("TEST 1: Direct shouldJump query");
+        match frontend.query_start("shouldJump()") {
+            Ok(Some(sol)) => {
+                eprintln!("  Result: success - {}", sol);
+            },
+            Ok(None) => {
+                eprintln!("  Result: no solution");
+                panic!("shouldJump() should succeed when ObstacleX=30");
+            },
+            Err(e) => {
+                eprintln!("  Result: error - {}", e);
+                panic!("Query failed: {}", e);
+            },
+        }
+
+        // Test negation: not(shouldJump) should fail
+        eprintln!("TEST 2: Negation not(shouldJump)");
+        match frontend.query_start("not(shouldJump())") {
+            Ok(None) => {
+                eprintln!("  Result: no solution (expected - negation fails)");
+            },
+            Ok(Some(sol)) => {
+                eprintln!("  Result: solution found - {}", sol);
+                panic!("not(shouldJump()) should fail, but got: {}", sol);
+            },
+            Err(e) => {
+                eprintln!("  Result: error - {}", e);
+                panic!("Query failed: {}", e);
+            },
+        }
+
+        // Test or with both branches - at least one must succeed
+        eprintln!("TEST 3: Or with both branches");
+        match frontend.query_start("or(shouldJump(), not(shouldJump()))") {
+            Ok(Some(sol)) => {
+                eprintln!("  Result: success - {}", sol);
+            },
+            Ok(None) => {
+                eprintln!("  Result: no solution");
+                panic!("or(shouldJump(), not(shouldJump())) should always succeed");
+            },
+            Err(e) => {
+                eprintln!("  Result: error - {}", e);
+                panic!("Query failed: {}", e);
+            },
+        }
+    }
 }

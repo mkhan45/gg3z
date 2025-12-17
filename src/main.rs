@@ -109,6 +109,15 @@ impl Frontend {
         let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
             .compile_query(&term);
 
+        // State variables are synchronized via two mechanisms:
+        // 1. var_map: Runtime tracking of current state variable term IDs
+        // 2. program.facts: Contains current state as equality constraints
+        //
+        // When the compiler compiles a query, it uses var_map to resolve state variables
+        // to their current term IDs. The solver then unifies these with facts, which already
+        // contain the current state values. No additional constraints needed.
+        //
+        // facts are always the single source of truth for the solver.
         let mut solver = Solver::new(&mut self.program);
         let solutions: Vec<_> = solver.query_with_strategy(goal, self.strategy)
             .with_limit(limit)
@@ -131,10 +140,12 @@ impl Frontend {
         let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
             .compile_query(&term);
 
+        let combined_goal = goal;
+
         self.pending_query_vars = query_vars;
 
         let mut solver = Solver::new(&mut self.program);
-        let queue = solver.init_query(goal, self.strategy);
+        let queue = solver.init_query(combined_goal, self.strategy);
         let (solution, remaining_queue) = solver.step_until_solution(queue, self.max_steps);
 
         self.pending_queue = Some(remaining_queue);
@@ -190,6 +201,11 @@ impl Frontend {
             return Ok(());
         }
 
+        // State constraint solving always has access to:
+        // 1. Current facts (base knowledge, including current state variable values)
+        // 2. Global rules (from Begin Global section - available everywhere)
+        // 3. Stage-specific state constraints
+        // Global rules are accessible via back-chaining in the solver
         let constraints = stage.state_constraints.clone();
         let stage_name = stage.name.clone();
         let next_var_map = stage.next_var_map.clone();
@@ -237,10 +253,51 @@ impl Frontend {
             )),
             1 => {
                 let solution = &solutions[0];
+                // Collect new values
+                let mut new_values = Vec::new();
                 for (name, next_term_id) in &next_var_map {
                     let new_value = solution.subst.walk(*next_term_id, &solver.program.terms);
-                    self.var_map.insert(name.clone(), new_value);
+                    new_values.push((name.clone(), new_value));
                 }
+                
+                // Update var_map with new values
+                for (name, new_value) in &new_values {
+                    self.var_map.insert(name.clone(), *new_value);
+                }
+                
+                // Update facts to reflect new state variable values
+                // Find and update fact constraints for state variables
+                let mut updated_facts = Vec::new();
+                for &fact_prop_id in &self.program.facts {
+                    let fact_prop = self.program.props.get(fact_prop_id).clone();
+                    if let ir::Prop::Eq(term_a, term_b) = fact_prop {
+                        // Check if this fact involves a state variable
+                        let mut is_state_var_fact = false;
+                        for (name, original_term_id) in &self.program.state_var_term_ids {
+                            if term_a == *original_term_id || term_b == *original_term_id {
+                                // This fact involves a state variable, check if we have a new value for it
+                                if let Some((_, new_value)) = new_values.iter().find(|(n, _)| n == name) {
+                                    // Replace this fact with the new value
+                                    let updated_fact = if term_a == *original_term_id {
+                                        self.program.props.alloc(ir::Prop::Eq(*original_term_id, *new_value))
+                                    } else {
+                                        self.program.props.alloc(ir::Prop::Eq(term_b, *new_value))
+                                    };
+                                    updated_facts.push(updated_fact);
+                                    is_state_var_fact = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !is_state_var_fact {
+                            updated_facts.push(fact_prop_id);
+                        }
+                    } else {
+                        updated_facts.push(fact_prop_id);
+                    }
+                }
+                self.program.facts = updated_facts;
+                
                 Ok(())
             }
             _ => {
@@ -338,6 +395,8 @@ impl Frontend {
             })
             .collect()
     }
+
+
 }
 
 impl Default for Frontend {
