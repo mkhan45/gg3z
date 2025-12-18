@@ -18,7 +18,8 @@ pub struct Frontend {
     pub max_steps: usize,
     pending_queue: Option<SearchQueue>,
     pending_query_vars: Vec<(String, TermId)>,
-    last_query_reason: Option<TerminationReason>,
+    pub last_query_reason: Option<TerminationReason>,
+    active_stage: Option<usize>,
 }
 
 impl Default for Frontend {
@@ -31,6 +32,7 @@ impl Default for Frontend {
             pending_queue: None,
             pending_query_vars: Vec::new(),
             last_query_reason: None,
+            active_stage: None,
         }
     }
 }
@@ -45,6 +47,7 @@ impl Frontend {
         match result {
             Ok((_, module)) => {
                 self.program = Program::default();
+                self.active_stage = None;
                 let mut compiler = Compiler::new(&mut self.program);
                 compiler.compile_module(&module);
                 self.var_map = compiler.into_var_map();
@@ -54,11 +57,26 @@ impl Frontend {
         }
     }
 
-    /// Execute a batch query, returning up to `limit` solutions all at once.
-    ///
-    /// For incremental solution retrieval, use `query_start` / `query_next` instead.
+    fn push_stage_rules(&mut self, stage_index: usize) {
+        if stage_index < self.program.stages.len() {
+            let rules = self.program.stages[stage_index].rules.clone();
+            self.program.global_rules.extend(rules);
+            self.active_stage = Some(stage_index);
+        }
+    }
+
+    fn pop_stage_rules(&mut self) {
+        if let Some(stage_index) = self.active_stage.take() {
+            if stage_index < self.program.stages.len() {
+                let count = self.program.stages[stage_index].rules.len();
+                let new_len = self.program.global_rules.len().saturating_sub(count);
+                self.program.global_rules.truncate(new_len);
+            }
+        }
+    }
+
     pub fn query_batch(&mut self, query_str: &str, limit: usize) -> Result<Vec<String>, String> {
-        self.query_batch_with_steps(query_str, limit, self.max_steps)
+        self.query_batch_with_steps(query_str, limit, self.max_steps, None)
     }
 
     fn query_batch_with_steps(
@@ -66,11 +84,21 @@ impl Frontend {
         query_str: &str,
         limit: usize,
         max_steps: usize,
+        stage_index: Option<usize>,
     ) -> Result<Vec<String>, String> {
+        if let Some(idx) = stage_index {
+            self.push_stage_rules(idx);
+        }
+
         let term_result = parser::parse_term(query_str.into()).finish();
         let term = match term_result {
             Ok((_, term)) => term,
-            Err(e) => return Err(format!("Query parse error: {:?}", e)),
+            Err(e) => {
+                if stage_index.is_some() {
+                    self.pop_stage_rules();
+                }
+                return Err(format!("Query parse error: {:?}", e));
+            }
         };
 
         let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
@@ -85,16 +113,28 @@ impl Frontend {
         // contain the current state values. No additional constraints needed.
         //
         // facts are always the single source of truth for the solver.
-        let mut solver = Solver::new(&mut self.program);
-        let solution_set = solver.collect_solutions(goal, self.strategy, limit, max_steps);
+        let solution_set = {
+            let mut solver = Solver::new(&mut self.program);
+            solver.collect_solutions(goal, self.strategy, limit, max_steps)
+        };
 
         self.last_query_reason = Some(solution_set.reason.clone());
 
-        Ok(solution_set
+        let results = solution_set
             .solutions()
             .iter()
-            .map(|s| format_solution(&query_vars, s, solver.program))
-            .collect())
+            .map(|s| format_solution(&query_vars, s, &self.program))
+            .collect();
+
+        if stage_index.is_some() {
+            self.pop_stage_rules();
+        }
+
+        Ok(results)
+    }
+
+    pub fn query_start_global(&mut self, query_str: &str) -> Result<Option<String>, String> {
+        self.query_start(query_str, None)
     }
 
     /// Start an incremental query, returning the first solution if one exists.
@@ -102,11 +142,20 @@ impl Frontend {
     /// Use `query_next()` to retrieve subsequent solutions.
     /// Use `query_stop()` to abandon the query.
     /// Use `has_more_solutions()` to check if more results are available.
-    pub fn query_start(&mut self, query_str: &str) -> Result<Option<String>, String> {
+    pub fn query_start(&mut self, query_str: &str, stage_index: Option<usize>) -> Result<Option<String>, String> {
+        self.query_stop();
+
+        if let Some(idx) = stage_index {
+            self.push_stage_rules(idx);
+        }
+
         let term_result = parser::parse_term(query_str.into()).finish();
         let term = match term_result {
             Ok((_, term)) => term,
-            Err(e) => return Err(format!("Query parse error: {:?}", e)),
+            Err(e) => {
+                self.pop_stage_rules();
+                return Err(format!("Query parse error: {:?}", e));
+            }
         };
 
         let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
@@ -120,7 +169,7 @@ impl Frontend {
 
         let found_solution = solution.is_some();
         let queue_exhausted = remaining_queue.is_empty();
-        
+
         self.update_incremental_state(found_solution, queue_exhausted, remaining_queue);
 
         match solution {
@@ -128,6 +177,7 @@ impl Frontend {
             None => {
                 if self.pending_queue.as_ref().is_none_or(|q| q.is_empty()) {
                     self.pending_queue = None;
+                    self.pop_stage_rules();
                 }
                 Ok(None)
             }
@@ -141,6 +191,7 @@ impl Frontend {
         let queue = self.pending_queue.take()?;
 
         if queue.is_empty() {
+            self.pop_stage_rules();
             return None;
         }
 
@@ -149,8 +200,12 @@ impl Frontend {
 
         let found_solution = solution.is_some();
         let queue_exhausted = remaining_queue.is_empty();
-        
+
         self.update_incremental_state(found_solution, queue_exhausted, remaining_queue);
+
+        if queue_exhausted {
+            self.pop_stage_rules();
+        }
 
         solution.map(|state| format_solution(&self.pending_query_vars, &state, &self.program))
     }
@@ -164,6 +219,7 @@ impl Frontend {
     pub fn query_stop(&mut self) {
         self.pending_queue = None;
         self.pending_query_vars.clear();
+        self.pop_stage_rules();
     }
 
     pub fn run_stage(&mut self, stage_index: usize) -> Result<(), String> {

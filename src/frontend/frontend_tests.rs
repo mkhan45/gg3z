@@ -80,7 +80,7 @@ End Global
 
         frontend.max_steps = 1000;
 
-        let first = frontend.query_start("num(X)").unwrap();
+        let first = frontend.query_start_global("num(X)").unwrap();
         assert!(first.is_some(), "Should find first solution");
         eprintln!("First: {:?}", first);
 

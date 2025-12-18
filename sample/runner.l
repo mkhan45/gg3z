@@ -5,6 +5,7 @@ Begin Facts:
     eq(RunnerY, 0.0)
     eq(RunnerVY, 0.0)
     eq(ObstacleX, 30.0)
+    true()
 End Facts
 
 Begin Global:
@@ -42,3 +43,15 @@ Begin Stage Physics:
         )
     End State Constraints
 End Stage Physics
+
+Begin Stage Draw:
+    Rule DrawPlayer:
+    true()
+    --------------
+    rect(1.0, RunnerY, 1.0, 1.0)
+
+    Rule DrawObstacle:
+    true()
+    --------------
+    rect(ObstacleX, 0.0, 1.0, 1.0)
+End Stage Draw

@@ -12,6 +12,7 @@ Begin Facts:
     eq(RunnerY, 0.0)
     eq(RunnerVY, 0.0)
     eq(ObstacleX, 30.0)
+    true()
 End Facts
 
 Begin Global:
@@ -49,6 +50,18 @@ Begin Stage Physics:
         )
     End State Constraints
 End Stage Physics
+
+Begin Stage Draw:
+    Rule DrawPlayer:
+    true()
+    --------------
+    rect(1.0, RunnerY, 1.0, 1.0)
+
+    Rule DrawObstacle:
+    true()
+    --------------
+    rect(ObstacleX, 0.0, 1.0, 1.0)
+End Stage Draw
         </textarea>
         <br/>
         <button id="reload">Reload</button>
@@ -63,7 +76,7 @@ End Stage Physics
         </select>
         <label for="max-steps-input">Max steps:</label>
         <input id="max-steps-input" type="number" value="10000" style="width: 80px"></input>
-        <input id="query-input" type="text" value="shouldJump()" style="width: 300px"></input>
+        <input id="query-input" type="text" value="rect(X, Y, W, H)" style="width: 300px"></input>
         <button id="query-btn">Query</button>
         <button id="next-btn" disabled>Next</button>
         <button id="stop-btn" disabled>Stop</button>
@@ -99,7 +112,7 @@ End Stage Physics
             let frontend_get_strategy = Module.cwrap('frontend_get_strategy', 'number', ['number']);
             let frontend_set_max_steps = Module.cwrap('frontend_set_max_steps', null, ['number', 'number']);
             let frontend_get_max_steps = Module.cwrap('frontend_get_max_steps', 'number', ['number']);
-            let frontend_query_start = Module.cwrap('frontend_query_start', 'string', ['number', 'string']);
+            let frontend_query_start = Module.cwrap('frontend_query_start', 'string', ['number', 'string', 'number']);
             let frontend_query_next = Module.cwrap('frontend_query_next', 'string', ['number']);
             let frontend_has_more = Module.cwrap('frontend_has_more', 'number', ['number']);
             let frontend_query_reason = Module.cwrap('frontend_query_reason', 'number', ['number']);
@@ -124,6 +137,7 @@ End Stage Physics
             let currentModule = null;
             let frontend = create_frontend();
             let queryStartTime = null;
+            let lastRunStage = -1;
 
             function reasonToString(reasonCode) {
                 switch (reasonCode) {
@@ -137,17 +151,29 @@ End Stage Physics
 
             function updateStateVars() {
                 const count = frontend_state_var_count(frontend);
-                if (count === 0) {
-                    stateVarsDiv.innerHTML = '<em>No state variables</em>';
-                    return;
+                let html = '';
+                if (lastRunStage >= 0) {
+                    const stageName = frontend_stage_name(frontend, lastRunStage);
+                    html += `<strong>Active Stage:</strong> ${stageName} <button id="clear-stage-btn">Clear</button><br/><br/>`;
                 }
-                let html = '<strong>State Variables:</strong><br/>';
-                for (let i = 0; i < count; i++) {
-                    const name = frontend_state_var_name(frontend, i);
-                    const value = frontend_state_var_value(frontend, i);
-                    html += `  ${name} = ${value}<br/>`;
+                if (count === 0) {
+                    html += '<em>No state variables</em>';
+                } else {
+                    html += '<strong>State Variables:</strong><br/>';
+                    for (let i = 0; i < count; i++) {
+                        const name = frontend_state_var_name(frontend, i);
+                        const value = frontend_state_var_value(frontend, i);
+                        html += `  ${name} = ${value}<br/>`;
+                    }
                 }
                 stateVarsDiv.innerHTML = html;
+                const clearBtn = document.querySelector('#clear-stage-btn');
+                if (clearBtn) {
+                    clearBtn.onclick = () => {
+                        lastRunStage = -1;
+                        updateStateVars();
+                    };
+                }
             }
 
             strategySelect.onchange = () => {
@@ -168,6 +194,7 @@ End Stage Physics
                     btn.onclick = () => {
                         const result = frontend_run_stage(frontend, stageIndex);
                         if (result === 1) {
+                            lastRunStage = stageIndex;
                             out.innerText += '\nRan stage: ' + btn.textContent;
                             updateStateVars();
                         } else {
@@ -185,7 +212,7 @@ End Stage Physics
 
                 const code = inp.value;
                 currentModule = parse_module(code);
-                
+
                 if (!currentModule) {
                     out.innerText = 'Parse error';
                     return;
@@ -196,13 +223,14 @@ End Stage Physics
                     out.innerText = 'Load error';
                     return;
                 }
-                
+
+                lastRunStage = -1;
                 const factCount = frontend_fact_count(frontend);
                 const ruleCount = frontend_rule_count(frontend);
                 const stageCount = frontend_stage_count(frontend);
-                
+
                 out.innerText = 'Loaded: ' + factCount + ' facts, ' + ruleCount + ' global rules, ' + stageCount + ' stages';
-                
+
                 buildStageButtons();
                 updateStateVars();
             };
@@ -218,11 +246,12 @@ End Stage Physics
                 if (!queryStr) return;
                 frontend_query_stop(frontend);
                 queryStartTime = performance.now();
-                const result = frontend_query_start(frontend, queryStr);
+                const result = frontend_query_start(frontend, queryStr, lastRunStage);
                 const elapsed = (performance.now() - queryStartTime).toFixed(2);
                 const reasonCode = frontend_query_reason(frontend);
                 const reason = reasonToString(reasonCode);
-                out.innerText += '\n\nQuery: ' + queryStr + '\n' + result + '\n(Time: ' + elapsed + 'ms, Reason: ' + reason + ')';
+                const stageInfo = lastRunStage >= 0 ? ` (in stage: ${frontend_stage_name(frontend, lastRunStage)})` : '';
+                out.innerText += '\n\nQuery: ' + queryStr + stageInfo + '\n' + result + '\n(Time: ' + elapsed + 'ms, Reason: ' + reason + ')';
                 updateButtons();
             };
 

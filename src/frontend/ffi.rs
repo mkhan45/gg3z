@@ -87,10 +87,11 @@ pub unsafe extern "C" fn frontend_query(frontend: *mut Frontend, query: *const c
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_query_start(frontend: *mut Frontend, query: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn frontend_query_start(frontend: *mut Frontend, query: *const c_char, stage_index: i32) -> *mut c_char {
     unsafe {
         let query_str = CStr::from_ptr(query).to_str().unwrap_or("");
-        let result = (*frontend).query_start(query_str);
+        let stage = if stage_index >= 0 { Some(stage_index as usize) } else { None };
+        let result = (*frontend).query_start(query_str, stage);
         let output = match result {
             Ok(Some(solution)) => solution,
             Ok(None) => "no".to_string(),

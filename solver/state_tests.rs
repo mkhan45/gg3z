@@ -269,7 +269,7 @@ End Stage TestStage
         assert_eq!(frontend.get_state_var("ObstacleX").unwrap(), "30");
 
         // shouldJump should fail because ObstacleX is 30, which is not in range [8, 18]
-        match frontend.query_start("shouldJump()") {
+        match frontend.query_start_global("shouldJump()") {
             Ok(None) => {}, // Expected: no solution
             Ok(Some(sol)) => {
                 eprintln!("DEBUG: shouldJump matched with solution: {}", sol);
@@ -279,7 +279,7 @@ End Stage TestStage
         }
         
         // Test the compound condition directly - should also fail
-        match frontend.query_start("and(real_eq(RunnerY, 0.0), and(real_ge(ObstacleX, 8.0), real_le(ObstacleX, 18.0)))") {
+        match frontend.query_start_global("and(real_eq(RunnerY, 0.0), and(real_ge(ObstacleX, 8.0), real_le(ObstacleX, 18.0)))") {
             Ok(None) => {}, // Expected: no solution
             Ok(Some(sol)) => {
                 eprintln!("DEBUG: Compound query matched with solution: {}", sol);
@@ -314,7 +314,7 @@ End Global
         assert_eq!(frontend.get_state_var("ObstacleX").unwrap(), "10");
 
         // shouldJump should succeed because ObstacleX is 10, which is in range [8, 18]
-        match frontend.query_start("shouldJump()") {
+        match frontend.query_start_global("shouldJump()") {
             Ok(Some(_)) => {}, // Expected: solution found
             Ok(None) => panic!("shouldJump() should match when RunnerY=0 and ObstacleX=10"),
             Err(e) => panic!("Query failed with error: {}", e),
@@ -334,14 +334,14 @@ End Global
 "#).unwrap();
 
         // Direct constraint test: should fail because X is 50, not less than 18
-        match frontend.query_start("real_le(X, 18.0)") {
+        match frontend.query_start_global("real_le(X, 18.0)") {
             Ok(None) => {}, // Expected: no solution
             Ok(Some(sol)) => panic!("real_le(X, 18.0) should fail when X=50, but got: {}", sol),
             Err(e) => panic!("Query failed with error: {}", e),
         }
 
         // This should succeed: X is 50, which is >= 8
-        match frontend.query_start("real_ge(X, 8.0)") {
+        match frontend.query_start_global("real_ge(X, 8.0)") {
             Ok(Some(_)) => {}, // Expected: solution found
             Ok(None) => panic!("real_ge(X, 8.0) should match when X=50"),
             Err(e) => panic!("Query failed with error: {}", e),
@@ -361,7 +361,7 @@ End Global
 "#).unwrap();
 
         // This should fail: X is 50, so (X >= 8) AND (X <= 18) is false (second part fails)
-        match frontend.query_start("and(real_ge(X, 8.0), real_le(X, 18.0))") {
+        match frontend.query_start_global("and(real_ge(X, 8.0), real_le(X, 18.0))") {
             Ok(None) => {}, // Expected: no solution
             Ok(Some(sol)) => {
                 eprintln!("DEBUG: and(real_ge(X, 8.0), real_le(X, 18.0)) matched when X=50: {}", sol);
@@ -388,7 +388,7 @@ End Global
 "#).unwrap();
 
         // Query the rule: should fail because X is 50, which fails the second constraint
-        match frontend.query_start("test_pred()") {
+        match frontend.query_start_global("test_pred()") {
             Ok(None) => {}, // Expected: no solution
             Ok(Some(sol)) => {
                 eprintln!("DEBUG: test_pred() matched when X=50: {}", sol);
@@ -407,7 +407,7 @@ End Global
         frontend.load(&input).unwrap();
 
         // Query before stage - baseline
-        match frontend.query_start("eq(1, 1)") {
+        match frontend.query_start_global("eq(1, 1)") {
             Ok(Some(_)) => {}, // Expected
             Ok(None) => panic!("eq(1, 1) should work before stage"),
             Err(e) => panic!("Query failed before stage: {}", e),
@@ -418,7 +418,7 @@ End Global
         assert_eq!(frontend.get_state_var("Health").unwrap(), "9");
 
         // Query after stage should still work - simple query
-        match frontend.query_start("eq(1, 1)") {
+        match frontend.query_start_global("eq(1, 1)") {
             Ok(Some(_)) => {}, // Expected: solution found
             Ok(None) => {
                 panic!("eq(1, 1) should always succeed after running a stage")
@@ -427,7 +427,7 @@ End Global
         }
 
         // Test with state variables
-        match frontend.query_start("eq(Health, 9)") {
+        match frontend.query_start_global("eq(Health, 9)") {
             Ok(Some(_)) => {}, // Expected: solution found (Health was just set to 9)
             Ok(None) => panic!("eq(Health, 9) should succeed after running stage"),
             Err(e) => panic!("Query failed with error: {}", e),
@@ -443,7 +443,7 @@ End Global
         frontend.load(&input).unwrap();
 
         // Query before stage
-        match frontend.query_start("eq(1, 1)") {
+        match frontend.query_start_global("eq(1, 1)") {
             Ok(Some(_)) => {}, // Expected
             Ok(None) => panic!("eq(1, 1) should work before stage"),
             Err(e) => panic!("Query failed before stage: {}", e),
@@ -453,7 +453,7 @@ End Global
         frontend.run_stage_by_name("Control").expect("Control stage should succeed");
 
         // Query after stage
-        match frontend.query_start("eq(1, 1)") {
+        match frontend.query_start_global("eq(1, 1)") {
             Ok(Some(_)) => {}, // Expected
             Ok(None) => panic!("eq(1, 1) should work after Control stage"),
             Err(e) => panic!("Query failed after Control stage: {}", e),
@@ -477,7 +477,7 @@ End Global
 
         // First verify truePred works
         eprintln!("TEST 1: Direct truePred query");
-        match frontend.query_start("truePred()") {
+        match frontend.query_start_global("truePred()") {
             Ok(Some(sol)) => {
                 eprintln!("  Result: success - {}", sol);
             },
@@ -494,7 +494,7 @@ End Global
         // Test: or(truePred(), not(truePred()))  
         // First branch should succeed, so or should succeed
         eprintln!("TEST 2: or(truePred(), not(truePred()))");
-        match frontend.query_start("or(truePred(), not(truePred()))") {
+        match frontend.query_start_global("or(truePred(), not(truePred()))") {
             Ok(Some(sol)) => {
                 eprintln!("  Result: success - {}", sol);
             },
@@ -527,7 +527,7 @@ End Global
 
         // Direct test: shouldJump should succeed (ObstacleX >= 8.0)
         eprintln!("TEST 1: Direct shouldJump query");
-        match frontend.query_start("shouldJump()") {
+        match frontend.query_start_global("shouldJump()") {
             Ok(Some(sol)) => {
                 eprintln!("  Result: success - {}", sol);
             },
@@ -543,7 +543,7 @@ End Global
 
         // Test negation: not(shouldJump) should fail
         eprintln!("TEST 2: Negation not(shouldJump)");
-        match frontend.query_start("not(shouldJump())") {
+        match frontend.query_start_global("not(shouldJump())") {
             Ok(None) => {
                 eprintln!("  Result: no solution (expected - negation fails)");
             },
@@ -559,7 +559,7 @@ End Global
 
         // Test or with both branches - at least one must succeed
         eprintln!("TEST 3: Or with both branches");
-        match frontend.query_start("or(shouldJump(), not(shouldJump()))") {
+        match frontend.query_start_global("or(shouldJump(), not(shouldJump()))") {
             Ok(Some(sol)) => {
                 eprintln!("  Result: success - {}", sol);
             },
