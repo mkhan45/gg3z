@@ -1,0 +1,6 @@
+- First class props, i.e. something like `call()`
+- Syntax sugar for `cond`
+- Built-in `true()` prop/fact
+- Make all rules global and all stages just constraints?
+- State querying
+- Forward compilation
