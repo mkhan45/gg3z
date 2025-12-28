@@ -1,9 +1,6 @@
 pub mod compile;
 pub mod parser;
 
-#[cfg(test)]
-mod parser_tests;
-
 use std::fmt;
 
 #[derive(Debug, Clone)]

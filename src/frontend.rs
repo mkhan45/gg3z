@@ -1,5 +1,4 @@
 pub mod ffi;
-pub mod frontend_tests;
 
 use std::collections::HashMap;
 

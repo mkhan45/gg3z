@@ -1,5 +1,5 @@
-use super::parser::*;
-use super::*;
+use crate::ast::parser::*;
+use crate::ast::*;
 
 #[test]
 fn test_parse_rule() {

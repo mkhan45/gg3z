@@ -1,9 +1,8 @@
-use super::*;
+use crate::solver::*;
+use crate::solver::ir::{Program, Prop, Term, Var};
 use crate::ast::compile::compile;
 use crate::ast::parser;
 use nom::Finish;
-
-use crate::solver::ir;
 
 const ALL_STRATEGIES: [SearchStrategy; 2] = [SearchStrategy::BFS, SearchStrategy::DFS];
 
@@ -40,10 +39,10 @@ End Global
 
         let player_sym = program.symbols.intern("player".to_string());
         let player_term = program.terms.alloc(Term::Atom(player_sym));
-        let x_var = program.vars.alloc(ir::Var {
+        let x_var = program.vars.alloc(Var {
             name: "X".to_string(),
         });
-        let y_var = program.vars.alloc(ir::Var {
+        let y_var = program.vars.alloc(Var {
             name: "Y".to_string(),
         });
         let x_term = program.terms.alloc(Term::Var(x_var));
@@ -97,7 +96,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var = program.vars.alloc(ir::Var {
+        let var = program.vars.alloc(Var {
             name: "Q".to_string(),
         });
         let var_term = program.terms.alloc(Term::Var(var));
@@ -142,7 +141,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var = program.vars.alloc(ir::Var {
+        let var = program.vars.alloc(Var {
             name: "I".to_string(),
         });
         let var_term = program.terms.alloc(Term::Var(var));
@@ -227,7 +226,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var = program.vars.alloc(ir::Var {
+        let var = program.vars.alloc(Var {
             name: "R".to_string(),
         });
         let var_term = program.terms.alloc(Term::Var(var));
@@ -276,7 +275,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var_b = program.vars.alloc(ir::Var {
+        let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
         let var_b_term = program.terms.alloc(Term::Var(var_b));
@@ -321,7 +320,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var_b = program.vars.alloc(ir::Var {
+        let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
         let var_b_term = program.terms.alloc(Term::Var(var_b));
@@ -360,7 +359,7 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let var = program.vars.alloc(ir::Var {
+        let var = program.vars.alloc(Var {
             name: "X".to_string(),
         });
         let var_term = program.terms.alloc(Term::Var(var));
@@ -394,10 +393,10 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let var_x = program.vars.alloc(ir::Var {
+        let var_x = program.vars.alloc(Var {
             name: "X".to_string(),
         });
-        let var_y = program.vars.alloc(ir::Var {
+        let var_y = program.vars.alloc(Var {
             name: "Y".to_string(),
         });
         let var_x_term = program.terms.alloc(Term::Var(var_x));
@@ -446,7 +445,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var_c = program.vars.alloc(ir::Var {
+        let var_c = program.vars.alloc(Var {
             name: "C".to_string(),
         });
         let var_c_term = program.terms.alloc(Term::Var(var_c));
@@ -492,7 +491,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var_b = program.vars.alloc(ir::Var {
+        let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
         let var_b_term = program.terms.alloc(Term::Var(var_b));
@@ -538,7 +537,7 @@ End Global
             .map(|(id, _)| id)
             .unwrap();
 
-        let var_c = program.vars.alloc(ir::Var {
+        let var_c = program.vars.alloc(Var {
             name: "C".to_string(),
         });
         let var_c_term = program.terms.alloc(Term::Var(var_c));
@@ -579,11 +578,11 @@ fn test_eager_constraint_pruning() {
         .map(|(id, _)| id)
         .unwrap();
 
-    let var_c = program.vars.alloc(ir::Var {
+    let var_c = program.vars.alloc(Var {
         name: "C".to_string(),
     });
     let var_c_term = program.terms.alloc(Term::Var(var_c));
-    let var_a = program.vars.alloc(ir::Var {
+    let var_a = program.vars.alloc(Var {
         name: "A".to_string(),
     });
     let var_a_term = program.terms.alloc(Term::Var(var_a));
@@ -629,11 +628,11 @@ fn test_cartcost_with_items() {
         .map(|(id, _)| id)
         .unwrap();
 
-    let var_c = program.vars.alloc(ir::Var {
+    let var_c = program.vars.alloc(Var {
         name: "C".to_string(),
     });
     let var_c_term = program.terms.alloc(Term::Var(var_c));
-    let var_t = program.vars.alloc(ir::Var {
+    let var_t = program.vars.alloc(Var {
         name: "T".to_string(),
     });
     let var_t_term = program.terms.alloc(Term::Var(var_t));
@@ -664,7 +663,7 @@ fn test_cartcost_specific_total() {
         .map(|(id, _)| id)
         .unwrap();
 
-    let var_c = program.vars.alloc(ir::Var {
+    let var_c = program.vars.alloc(Var {
         name: "C".to_string(),
     });
     let var_c_term = program.terms.alloc(Term::Var(var_c));
@@ -697,11 +696,11 @@ fn test_cartcost_unbound_maxsize() {
         .map(|(id, _)| id)
         .unwrap();
 
-    let var_a = program.vars.alloc(ir::Var {
+    let var_a = program.vars.alloc(Var {
         name: "A".to_string(),
     });
     let var_a_term = program.terms.alloc(Term::Var(var_a));
-    let var_b = program.vars.alloc(ir::Var {
+    let var_b = program.vars.alloc(Var {
         name: "B".to_string(),
     });
     let var_b_term = program.terms.alloc(Term::Var(var_b));

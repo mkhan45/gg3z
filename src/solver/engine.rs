@@ -683,9 +683,7 @@ impl<'p> Solver<'p> {
             Prop::True => {
                 queue.push(state);
             }
-            Prop::False => {
-                queue.pop();
-            }
+            Prop::False => { /* abandon branch */ }
             Prop::Eq(t1, t2) => {
                 if let Some(new_subst) = state.subst.unify(t1, t2, &self.program.terms) {
                     queue.push(state.with_subst(new_subst));
@@ -975,7 +973,3 @@ pub fn format_solution(
         parts.join(", ")
     }
 }
-
-#[cfg(test)]
-#[path = "engine_tests.rs"]
-mod engine_tests;
