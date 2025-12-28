@@ -5,7 +5,8 @@ use std::cell::RefCell;
 
 use im::{HashMap, Vector};
 
-use crate::solver::ir::{Arena, Clause, Program, Prop, PropId, RelId, RelKind, Term, TermId, Var, VarId};
+use crate::solver::ir::{Clause, Program, Prop, PropId, RelId, RelKind, Term, TermId, Var, VarId};
+use crate::solver::arena::Arena;
 
 #[cfg(feature = "profile")]
 thread_local! {

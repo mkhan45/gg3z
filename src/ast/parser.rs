@@ -11,7 +11,7 @@ use nom::{
     sequence::delimited,
 };
 
-use crate::ast::{DrawDirective, Module, Rule, Stage, Term, TermContents, Rel};
+use crate::ast::{AstRel, DrawDirective, Module, Rule, Stage, Term};
 
 /// Skips a line comment: # followed by everything until (but not including) newline or EOF
 fn skip_line_comment(s: Span) -> IResult<Span, ()> {
@@ -62,8 +62,8 @@ fn skip_trailing_comment(s: Span) -> IResult<Span, ()> {
     Ok((s, ()))
 }
 
-fn user_rel(name: &str) -> Rel {
-    Rel::UserRel { name: name.to_string() }
+fn ast_rel(name: &str) -> AstRel {
+    AstRel { name: name.to_string() }
 }
 
 pub type Span<'a> = LocatedSpan<&'a str>;
@@ -323,9 +323,7 @@ fn parse_int(s: Span) -> IResult<Span, Term> {
     };
     let val = val_str.parse::<i32>().unwrap();
 
-    Ok((s, Term {
-        contents: TermContents::Int { val },
-    }))
+    Ok((s, Term::Int { val }))
 }
 
 fn parse_float(s: Span) -> IResult<Span, Term> {
@@ -340,9 +338,7 @@ fn parse_float(s: Span) -> IResult<Span, Term> {
     };
     let val = val_str.parse::<f32>().unwrap();
 
-    Ok((s, Term {
-        contents: TermContents::Float { val },
-    }))
+    Ok((s, Term::Float { val }))
 }
 
 fn parse_var(s: Span) -> IResult<Span, Term> {
@@ -353,9 +349,7 @@ fn parse_var(s: Span) -> IResult<Span, Term> {
         return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
     }
 
-    Ok((s, Term {
-        contents: TermContents::Var { name: name.to_string() },
-    }))
+    Ok((s, Term::Var { name: name.to_string() }))
 }
 
 fn parse_atom(s: Span) -> IResult<Span, Term> {
@@ -366,9 +360,7 @@ fn parse_atom(s: Span) -> IResult<Span, Term> {
         return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
     }
 
-    Ok((s, Term {
-        contents: TermContents::Atom { text: text.to_string() },
-    }))
+    Ok((s, Term::Atom { text: text.to_string() }))
 }
 
 fn parse_app(s: Span) -> IResult<Span, Term> {
@@ -396,11 +388,9 @@ fn parse_app(s: Span) -> IResult<Span, Term> {
         char(')'),
     ).parse(s)?;
 
-    let rel = Rel::UserRel { name: rel_name.to_string() };
+    let rel = AstRel { name: rel_name.to_string() };
 
-    Ok((s, Term {
-        contents: TermContents::App { rel, args },
-    }))
+    Ok((s, Term::App { rel, args }))
 }
 
 fn parse_paren_term(s: Span) -> IResult<Span, Term> {
@@ -434,39 +424,37 @@ fn parse_unary(s: Span) -> IResult<Span, Term> {
     let (s, mut term) = parse_primary(s)?;
 
     for _ in 0..nots.len() {
-        term = Term {
-            contents: TermContents::App {
-                rel: user_rel("not"),
-                args: vec![term],
-            },
+        term = Term::App {
+            rel: ast_rel("not"),
+            args: vec![term],
         };
     }
 
     Ok((s, term))
 }
 
-fn parse_cmp_op(s: Span) -> IResult<Span, Rel> {
+fn parse_cmp_op(s: Span) -> IResult<Span, AstRel> {
     alt((
-        map(tag(".=="), |_| user_rel("real_eq")),
-        map(tag(".<="), |_| user_rel("real_le")),
-        map(tag(".>="), |_| user_rel("real_ge")),
-        map(tag(".<"), |_| user_rel("real_lt")),
-        map(tag(".>"), |_| user_rel("real_gt")),
-        map(tag("=="), |_| user_rel("int_eq")),
-        map(tag("<="), |_| user_rel("int_le")),
-        map(tag(">="), |_| user_rel("int_ge")),
-        map(tag("<"), |_| user_rel("int_lt")),
-        map(tag(">"), |_| user_rel("int_gt")),
+        map(tag(".=="), |_| ast_rel("real_eq")),
+        map(tag(".<="), |_| ast_rel("real_le")),
+        map(tag(".>="), |_| ast_rel("real_ge")),
+        map(tag(".<"), |_| ast_rel("real_lt")),
+        map(tag(".>"), |_| ast_rel("real_gt")),
+        map(tag("=="), |_| ast_rel("int_eq")),
+        map(tag("<="), |_| ast_rel("int_le")),
+        map(tag(">="), |_| ast_rel("int_ge")),
+        map(tag("<"), |_| ast_rel("int_lt")),
+        map(tag(">"), |_| ast_rel("int_gt")),
     )).parse(s)
 }
 
-fn parse_eq_op(s: Span) -> IResult<Span, Rel> {
+fn parse_eq_op(s: Span) -> IResult<Span, AstRel> {
     let (s, _) = char('=')(s)?;
     // Make sure this isn't `==` (int_eq)
     if s.fragment().starts_with('=') {
         return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Char)));
     }
-    Ok((s, user_rel("eq")))
+    Ok((s, ast_rel("eq")))
 }
 
 fn parse_eq(s: Span) -> IResult<Span, Term> {
@@ -476,11 +464,9 @@ fn parse_eq(s: Span) -> IResult<Span, Term> {
         if let Ok((s3, rel)) = parse_eq_op(s2) {
             let (s4, _) = ws0(s3)?;
             let (s5, right) = parse_unary(s4)?;
-            left = Term {
-                contents: TermContents::App {
-                    rel,
-                    args: vec![left, right],
-                },
+            left = Term::App {
+                rel,
+                args: vec![left, right],
             };
             s = s5;
         } else {
@@ -497,11 +483,9 @@ fn parse_cmp(s: Span) -> IResult<Span, Term> {
         if let Ok((s3, rel)) = parse_cmp_op(s2) {
             let (s4, _) = ws0(s3)?;
             let (s5, right) = parse_eq(s4)?;
-            left = Term {
-                contents: TermContents::App {
-                    rel,
-                    args: vec![left, right],
-                },
+            left = Term::App {
+                rel,
+                args: vec![left, right],
             };
             s = s5;
         } else {
@@ -511,9 +495,9 @@ fn parse_cmp(s: Span) -> IResult<Span, Term> {
     Ok((s, left))
 }
 
-fn parse_and_op(s: Span) -> IResult<Span, Rel> {
+fn parse_and_op(s: Span) -> IResult<Span, AstRel> {
     let (s, _) = alt((char('∧'), char('&'))).parse(s)?;
-    Ok((s, user_rel("and")))
+    Ok((s, ast_rel("and")))
 }
 
 fn parse_and(s: Span) -> IResult<Span, Term> {
@@ -523,11 +507,9 @@ fn parse_and(s: Span) -> IResult<Span, Term> {
         if let Ok((s3, rel)) = parse_and_op(s2) {
             let (s4, _) = ws0(s3)?;
             let (s5, right) = parse_cmp(s4)?;
-            left = Term {
-                contents: TermContents::App {
-                    rel,
-                    args: vec![left, right],
-                },
+            left = Term::App {
+                rel,
+                args: vec![left, right],
             };
             s = s5;
         } else {
@@ -537,9 +519,9 @@ fn parse_and(s: Span) -> IResult<Span, Term> {
     Ok((s, left))
 }
 
-fn parse_or_op(s: Span) -> IResult<Span, Rel> {
+fn parse_or_op(s: Span) -> IResult<Span, AstRel> {
     let (s, _) = alt((char('∨'), char('|'))).parse(s)?;
-    Ok((s, user_rel("or")))
+    Ok((s, ast_rel("or")))
 }
 
 fn parse_or(s: Span) -> IResult<Span, Term> {
@@ -549,11 +531,9 @@ fn parse_or(s: Span) -> IResult<Span, Term> {
         if let Ok((s3, rel)) = parse_or_op(s2) {
             let (s4, _) = ws0(s3)?;
             let (s5, right) = parse_and(s4)?;
-            left = Term {
-                contents: TermContents::App {
-                    rel,
-                    args: vec![left, right],
-                },
+            left = Term::App {
+                rel,
+                args: vec![left, right],
             };
             s = s5;
         } else {

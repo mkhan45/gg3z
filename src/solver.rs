@@ -1,4 +1,5 @@
 mod engine;
+pub mod arena;
 pub mod ir;
 
 pub use engine::{

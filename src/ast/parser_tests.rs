@@ -8,25 +8,17 @@ fn test_parse_rule() {
 
     assert_eq!(rule.name, "Test");
 
-    // Check premise
-    match &rule.premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected App for premise"),
     }
 
-    // Check conclusion
-    match &rule.conclusion.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "result"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.conclusion {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "result");
             assert_eq!(args.len(), 1);
         }
         _ => panic!("Expected App for conclusion"),
@@ -40,8 +32,8 @@ fn test_parse_int() {
     let input = Span::new("42");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::Int { val } => assert_eq!(val, 42),
+    match term {
+        Term::Int { val } => assert_eq!(val, 42),
         _ => panic!("Expected Int"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -52,8 +44,8 @@ fn test_parse_float() {
     let input = Span::new("3.14");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::Float { val } => assert!((val - std::f32::consts::PI).abs() < 0.01),
+    match term {
+        Term::Float { val } => assert!((val - std::f32::consts::PI).abs() < 0.01),
         _ => panic!("Expected Float"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -64,8 +56,8 @@ fn test_parse_var() {
     let input = Span::new("X");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::Var { name } => assert_eq!(name, "X"),
+    match term {
+        Term::Var { name } => assert_eq!(name, "X"),
         _ => panic!("Expected Var"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -76,8 +68,8 @@ fn test_parse_atom() {
     let input = Span::new("foo");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::Atom { text } => assert_eq!(text, "foo"),
+    match term {
+        Term::Atom { text } => assert_eq!(text, "foo"),
         _ => panic!("Expected Atom"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -88,21 +80,18 @@ fn test_parse_app() {
     let input = Span::new("add(5, X)");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match term {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
 
-            match &args[0].contents {
-                TermContents::Int { val } => assert_eq!(*val, 5),
+            match &args[0] {
+                Term::Int { val } => assert_eq!(*val, 5),
                 _ => panic!("Expected Int for first arg"),
             }
 
-            match &args[1].contents {
-                TermContents::Var { name } => assert_eq!(*name, "X"),
+            match &args[1] {
+                Term::Var { name } => assert_eq!(*name, "X"),
                 _ => panic!("Expected Var for second arg"),
             }
         }
@@ -116,21 +105,15 @@ fn test_parse_nested_app() {
     let input = Span::new("mul(add(1, 2), 3)");
     let (remaining, term) = parse_term(input).unwrap();
 
-    match term.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(name, "mul"),
-                _ => panic!("Expected UserRel"),
-            }
+    match term {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "mul");
             assert_eq!(args.len(), 2);
 
             // Check first arg is add(1, 2)
-            match &args[0].contents {
-                TermContents::App { rel, args } => {
-                    match rel {
-                        Rel::UserRel { name } => assert_eq!(*name, "add"),
-                        _ => panic!("Expected UserRel"),
-                    }
+            match &args[0] {
+                Term::App { rel, args } => {
+                    assert_eq!(rel.name, "add");
                     assert_eq!(args.len(), 2);
                 }
                 _ => panic!("Expected App for first arg"),
@@ -154,19 +137,16 @@ fn test_file_simple_rule() {
     assert_eq!(rule.name, "AddCommutative");
 
     // Check premise: add(X, Y)
-    match &rule.premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
-            match &args[0].contents {
-                TermContents::Var { name } => assert_eq!(*name, "X"),
+            match &args[0] {
+                Term::Var { name } => assert_eq!(*name, "X"),
                 _ => panic!("Expected Var"),
             }
-            match &args[1].contents {
-                TermContents::Var { name } => assert_eq!(*name, "Y"),
+            match &args[1] {
+                Term::Var { name } => assert_eq!(*name, "Y"),
                 _ => panic!("Expected Var"),
             }
         }
@@ -174,19 +154,16 @@ fn test_file_simple_rule() {
     }
 
     // Check conclusion: add(Y, X)
-    match &rule.conclusion.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.conclusion {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
-            match &args[0].contents {
-                TermContents::Var { name } => assert_eq!(*name, "Y"),
+            match &args[0] {
+                Term::Var { name } => assert_eq!(*name, "Y"),
                 _ => panic!("Expected Var"),
             }
-            match &args[1].contents {
-                TermContents::Var { name } => assert_eq!(*name, "X"),
+            match &args[1] {
+                Term::Var { name } => assert_eq!(*name, "X"),
                 _ => panic!("Expected Var"),
             }
         }
@@ -210,29 +187,23 @@ fn test_file_nested_rule() {
     assert_eq!(rule.name, "Multiply");
 
     // Check premise: mul(add(X, Y), Z)
-    match &rule.premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "mul"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "mul");
             assert_eq!(args.len(), 2);
 
             // First arg should be add(X, Y)
-            match &args[0].contents {
-                TermContents::App { rel, args } => {
-                    match rel {
-                        Rel::UserRel { name } => assert_eq!(*name, "add"),
-                        _ => panic!("Expected UserRel"),
-                    }
+            match &args[0] {
+                Term::App { rel, args } => {
+                    assert_eq!(rel.name, "add");
                     assert_eq!(args.len(), 2);
                 }
                 _ => panic!("Expected App"),
             }
 
             // Second arg should be Z
-            match &args[1].contents {
-                TermContents::Var { name } => assert_eq!(*name, "Z"),
+            match &args[1] {
+                Term::Var { name } => assert_eq!(*name, "Z"),
                 _ => panic!("Expected Var"),
             }
         }
@@ -240,22 +211,16 @@ fn test_file_nested_rule() {
     }
 
     // Check conclusion: add(mul(X, Z), mul(Y, Z))
-    match &rule.conclusion.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.conclusion {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
 
             // Both args should be mul(...) applications
             for arg in args {
-                match &arg.contents {
-                    TermContents::App { rel, args } => {
-                        match rel {
-                            Rel::UserRel { name } => assert_eq!(*name, "mul"),
-                            _ => panic!("Expected UserRel"),
-                        }
+                match &arg {
+                    Term::App { rel, args } => {
+                        assert_eq!(rel.name, "mul");
                         assert_eq!(args.len(), 2);
                     }
                     _ => panic!("Expected App"),
@@ -281,23 +246,20 @@ fn test_file_mixed_types() {
     assert_eq!(rule.name, "TypeCheck");
 
     // Check premise: typeof(42, int)
-    match &rule.premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "typeof"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "typeof");
             assert_eq!(args.len(), 2);
 
             // First arg: 42 (integer)
-            match &args[0].contents {
-                TermContents::Int { val } => assert_eq!(*val, 42),
+            match &args[0] {
+                Term::Int { val } => assert_eq!(*val, 42),
                 _ => panic!("Expected Int"),
             }
 
             // Second arg: int (atom)
-            match &args[1].contents {
-                TermContents::Atom { text } => assert_eq!(*text, "int"),
+            match &args[1] {
+                Term::Atom { text } => assert_eq!(*text, "int"),
                 _ => panic!("Expected Atom"),
             }
         }
@@ -305,16 +267,13 @@ fn test_file_mixed_types() {
     }
 
     // Check conclusion: valid(42)
-    match &rule.conclusion.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "valid"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &rule.conclusion {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "valid");
             assert_eq!(args.len(), 1);
 
-            match &args[0].contents {
-                TermContents::Int { val } => assert_eq!(*val, 42),
+            match &args[0] {
+                Term::Int { val } => assert_eq!(*val, 42),
                 _ => panic!("Expected Int"),
             }
         }
@@ -364,12 +323,9 @@ fn test_file_stage() {
 
     // Check first rule
     assert_eq!(stage.rules[0].name, "Add");
-    match &stage.rules[0].premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "add"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &stage.rules[0].premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "add");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected App"),
@@ -377,12 +333,9 @@ fn test_file_stage() {
 
     // Check second rule
     assert_eq!(stage.rules[1].name, "Multiply");
-    match &stage.rules[1].premise.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "mul"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &stage.rules[1].premise {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "mul");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected App"),
@@ -487,24 +440,21 @@ fn test_parse_module_with_facts() {
     // Check facts
     assert_eq!(module.facts.len(), 3);
 
-    match &module.facts[0].contents {
-        TermContents::Atom { text } => assert_eq!(*text, "foo"),
+    match &module.facts[0] {
+        Term::Atom { text } => assert_eq!(*text, "foo"),
         _ => panic!("Expected Atom"),
     }
 
-    match &module.facts[1].contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "bar"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &module.facts[1] {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "bar");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected App"),
     }
 
-    match &module.facts[2].contents {
-        TermContents::Var { name } => assert_eq!(*name, "X"),
+    match &module.facts[2] {
+        Term::Var { name } => assert_eq!(*name, "X"),
         _ => panic!("Expected Var"),
     }
 
@@ -544,12 +494,9 @@ fn test_parse_complete_module() {
 
     // Check facts
     assert_eq!(module.facts.len(), 2);
-    match &module.facts[0].contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "initial"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &module.facts[0] {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "initial");
             assert_eq!(args.len(), 1);
         }
         _ => panic!("Expected App"),
@@ -597,33 +544,33 @@ fn test_parse_module_multiple_facts() {
     // Check all fact types
     assert_eq!(module.facts.len(), 6);
 
-    match &module.facts[0].contents {
-        TermContents::Atom { text } => assert_eq!(*text, "atom1"),
+    match &module.facts[0] {
+        Term::Atom { text } => assert_eq!(*text, "atom1"),
         _ => panic!("Expected Atom"),
     }
 
-    match &module.facts[1].contents {
-        TermContents::Atom { text } => assert_eq!(*text, "atom2"),
+    match &module.facts[1] {
+        Term::Atom { text } => assert_eq!(*text, "atom2"),
         _ => panic!("Expected Atom"),
     }
 
-    match &module.facts[2].contents {
-        TermContents::App { args, .. } => assert_eq!(args.len(), 3),
+    match &module.facts[2] {
+        Term::App { args, .. } => assert_eq!(args.len(), 3),
         _ => panic!("Expected App"),
     }
 
-    match &module.facts[3].contents {
-        TermContents::Int { val } => assert_eq!(*val, 42),
+    match &module.facts[3] {
+        Term::Int { val } => assert_eq!(*val, 42),
         _ => panic!("Expected Int"),
     }
 
-    match &module.facts[4].contents {
-        TermContents::Float { val } => assert!((val - std::f32::consts::PI).abs() < 0.01),
+    match &module.facts[4] {
+        Term::Float { val } => assert!((val - std::f32::consts::PI).abs() < 0.01),
         _ => panic!("Expected Float"),
     }
 
-    match &module.facts[5].contents {
-        TermContents::Var { name } => assert_eq!(*name, "Variable"),
+    match &module.facts[5] {
+        Term::Var { name } => assert_eq!(*name, "Variable"),
         _ => panic!("Expected Var"),
     }
 
@@ -649,16 +596,12 @@ fn test_parse_module_multiple_global_rules() {
 // ============================================================================
 
 fn assert_binop(term: &Term, expected_rel: &str, check_args: impl FnOnce(&[Term])) {
-    match &term.contents {
-        TermContents::App { rel, args } => {
-            let name = match rel {
-                Rel::UserRel { name } => name,
-                Rel::SMTRel { name } => name,
-            };
-            assert_eq!(name, expected_rel, "Expected rel {}, got {}", expected_rel, name);
+    match &term {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, expected_rel, "Expected rel {}, got {}", expected_rel, rel.name);
             check_args(args);
         }
-        _ => panic!("Expected App, got {:?}", term.contents),
+        _ => panic!("Expected App, got {:?}", term),
     }
 }
 
@@ -668,8 +611,8 @@ fn test_parse_eq_operator() {
     let (remaining, term) = parse_term(input).unwrap();
     assert_binop(&term, "eq", |args| {
         assert_eq!(args.len(), 2);
-        assert!(matches!(&args[0].contents, TermContents::Var { name } if name == "X"));
-        assert!(matches!(&args[1].contents, TermContents::Var { name } if name == "Y"));
+        assert!(matches!(&args[0], Term::Var { name } if name == "X"));
+        assert!(matches!(&args[1], Term::Var { name } if name == "Y"));
     });
     assert_eq!(*remaining.fragment(), "");
 }
@@ -751,10 +694,10 @@ fn test_operator_precedence() {
     assert_binop(&term, "and", |args| {
         assert_eq!(args.len(), 2);
         assert_binop(&args[0], "eq", |eq_args| {
-            assert!(matches!(&eq_args[0].contents, TermContents::Atom { text } if text == "a"));
-            assert!(matches!(&eq_args[1].contents, TermContents::Atom { text } if text == "b"));
+            assert!(matches!(&eq_args[0], Term::Atom { text } if text == "a"));
+            assert!(matches!(&eq_args[1], Term::Atom { text } if text == "b"));
         });
-        assert!(matches!(&args[1].contents, TermContents::Atom { text } if text == "c"));
+        assert!(matches!(&args[1], Term::Atom { text } if text == "c"));
     });
 
     // a | b & c should parse as or(a, and(b, c))
@@ -762,7 +705,7 @@ fn test_operator_precedence() {
     let (_, term2) = parse_term(input2).unwrap();
     assert_binop(&term2, "or", |args| {
         assert_eq!(args.len(), 2);
-        assert!(matches!(&args[0].contents, TermContents::Atom { text } if text == "a"));
+        assert!(matches!(&args[0], Term::Atom { text } if text == "a"));
         assert_binop(&args[1], "and", |_| {});
     });
 
@@ -808,8 +751,8 @@ fn test_comment_after_fact() {
     let (remaining, module) = parse_module(input).unwrap();
     
     assert_eq!(module.facts.len(), 1);
-    match &module.facts[0].contents {
-        TermContents::Atom { text } => assert_eq!(*text, "foo"),
+    match &module.facts[0] {
+        Term::Atom { text } => assert_eq!(*text, "foo"),
         _ => panic!("Expected Atom"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -821,8 +764,8 @@ fn test_comment_only_line() {
     let (remaining, module) = parse_module(input).unwrap();
     
     assert_eq!(module.facts.len(), 1);
-    match &module.facts[0].contents {
-        TermContents::Atom { text } => assert_eq!(*text, "foo"),
+    match &module.facts[0] {
+        Term::Atom { text } => assert_eq!(*text, "foo"),
         _ => panic!("Expected Atom"),
     }
     assert_eq!(*remaining.fragment(), "");
@@ -862,12 +805,9 @@ fn test_comment_in_app_args() {
     let input = Span::new("foo(\n    X, # first arg\n    Y  # second arg\n)");
     let (remaining, term) = parse_term(input).unwrap();
     
-    match &term.contents {
-        TermContents::App { rel, args } => {
-            match rel {
-                Rel::UserRel { name } => assert_eq!(*name, "foo"),
-                _ => panic!("Expected UserRel"),
-            }
+    match &term {
+        Term::App { rel, args } => {
+            assert_eq!(rel.name, "foo");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected App"),
@@ -881,8 +821,8 @@ fn test_comment_with_hash_in_string_context() {
     let input = Span::new("foo # bar(X) this is all comment\n");
     let (remaining, term) = parse_term(input).unwrap();
     
-    match &term.contents {
-        TermContents::Atom { text } => assert_eq!(*text, "foo"),
+    match &term {
+        Term::Atom { text } => assert_eq!(*text, "foo"),
         _ => panic!("Expected Atom"),
     }
     // Should leave the newline and nothing else

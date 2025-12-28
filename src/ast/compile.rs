@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{Module, Rel, Rule, Stage, Term, TermContents};
+use crate::ast::{Module, Rule, Stage, Term};
 use crate::ast::parser::{self, Span};
 use crate::solver::ir::{
     Clause, DrawDirective as IrDrawDirective, Program, Prop, PropId, RelId, RelInfo, RelKind,
@@ -163,29 +163,27 @@ impl<'a> Compiler<'a> {
     }
 
     fn lower_simple_term(&mut self, term: &Term) -> TermId {
-        match &term.contents {
-            TermContents::Var { name } => self.get_or_create_var(name),
-            TermContents::Atom { text } => {
+        match term {
+            Term::Var { name } => self.get_or_create_var(name),
+            Term::Atom { text } => {
                 let sym_id = self.intern_symbol(text);
                 self.alloc_term(IRTerm::Atom(sym_id))
             }
-            TermContents::Int { val } => self.alloc_term(IRTerm::Int(*val)),
-            TermContents::Float { val } => self.alloc_term(IRTerm::Float(*val)),
-            TermContents::App { .. } => {
+            Term::Int { val } => self.alloc_term(IRTerm::Int(*val)),
+            Term::Float { val } => self.alloc_term(IRTerm::Float(*val)),
+            Term::App { .. } => {
                 panic!("lower_simple_term called on App - use lower_term_to_prop instead")
             }
         }
     }
 
     fn lower_term_arg(&mut self, term: &Term) -> TermId {
-        match &term.contents {
-            TermContents::App { rel, args } => {
-                let rel_name = match rel {
-                    Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
-                };
+        match term {
+            Term::App { rel, args } => {
+                let rel_name = rel.name.as_str();
 
                 if rel_name == "next" && args.len() == 1
-                    && let TermContents::Var { name } = &args[0].contents
+                    && let Term::Var { name } = &args[0]
                 {
                     return self.get_or_create_next_var(name);
                 }
@@ -216,11 +214,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn lower_term_to_prop(&mut self, term: &Term) -> PropId {
-        match &term.contents {
-            TermContents::App { rel, args } => {
-                let rel_name = match rel {
-                    Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
-                };
+        match term {
+            Term::Atom { text } if text == "true" => self.alloc_prop(Prop::True),
+            Term::Atom { text } if text == "false" => self.alloc_prop(Prop::False),
+            Term::App { rel, args } => {
+                let rel_name = rel.name.as_str();
 
                 match rel_name {
                     "and" => {
@@ -291,11 +289,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn lower_conclusion(&mut self, conclusion: &Term) -> (RelId, Vec<TermId>) {
-        match &conclusion.contents {
-            TermContents::App { rel, args } => {
-                let rel_name = match rel {
-                    Rel::SMTRel { name } | Rel::UserRel { name } => name.as_str(),
-                };
+        match conclusion {
+            Term::App { rel, args } => {
+                let rel_name = rel.name.as_str();
 
                 let lowered_args: Vec<TermId> = args
                     .iter()

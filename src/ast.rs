@@ -36,13 +36,8 @@ pub struct Rule {
 }
 
 #[derive(Debug, Clone)]
-pub struct Term {
-    pub contents: TermContents,
-}
-
-#[derive(Debug, Clone)]
-pub enum TermContents {
-    App { rel: Rel, args: Vec<Term> },
+pub enum Term {
+    App { rel: AstRel, args: Vec<Term> },
     Atom { text: String },
     Var { name: String },
     Int { val: i32 },
@@ -50,20 +45,15 @@ pub enum TermContents {
 }
 
 #[derive(Debug, Clone)]
-pub enum Rel {
-    SMTRel { name: String },
-    UserRel { name: String },
+pub struct AstRel {
+    pub name: String,
 }
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.contents {
-            TermContents::App { rel, args } => {
-                let rel_name = match rel {
-                    Rel::SMTRel { name } => name,
-                    Rel::UserRel { name } => name,
-                };
-                write!(f, "{}", rel_name)?;
+        match self {
+            Term::App { rel, args } => {
+                write!(f, "{}", rel.name)?;
                 if !args.is_empty() {
                     write!(f, "(")?;
                     for (i, arg) in args.iter().enumerate() {
@@ -76,10 +66,10 @@ impl fmt::Display for Term {
                 }
                 Ok(())
             }
-            TermContents::Atom { text } => write!(f, "{}", text),
-            TermContents::Var { name } => write!(f, "{}", name),
-            TermContents::Int { val } => write!(f, "{}", val),
-            TermContents::Float { val } => write!(f, "{}", val),
+            Term::Atom { text } => write!(f, "{}", text),
+            Term::Var { name } => write!(f, "{}", name),
+            Term::Int { val } => write!(f, "{}", val),
+            Term::Float { val } => write!(f, "{}", val),
         }
     }
 }
