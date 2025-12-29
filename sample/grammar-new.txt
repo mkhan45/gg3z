@@ -1,0 +1,12 @@
+Module =
+    Begin Init
+        State Vars <var>,*
+
+        Rules
+            <rule>*
+
+        State Query
+            <prop>*
+    End Init
+
+    <stage>*

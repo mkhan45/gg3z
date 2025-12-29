@@ -352,11 +352,17 @@ fn parse_var(s: Span) -> IResult<Span, Term> {
     Ok((s, Term::Var { name: name.to_string() }))
 }
 
+const RESERVED_KEYWORDS: &[&str] = &["when", "otherwise"];
+
 fn parse_atom(s: Span) -> IResult<Span, Term> {
     let (s, _) = position(s)?;
     let (s, text) = parse_identifier(s)?;
 
     if !text.chars().next().unwrap().is_lowercase() {
+        return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
+    }
+
+    if RESERVED_KEYWORDS.contains(&text) {
         return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
     }
 
@@ -366,6 +372,11 @@ fn parse_atom(s: Span) -> IResult<Span, Term> {
 fn parse_app(s: Span) -> IResult<Span, Term> {
     let (s, _) = position(s)?;
     let (s, rel_name) = parse_identifier(s)?;
+    
+    if RESERVED_KEYWORDS.contains(&rel_name) {
+        return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Verify)));
+    }
+    
     let (s, _) = ws0(s)?;
 
     fn ws_term(s: Span) -> IResult<Span, Term> {
@@ -543,6 +554,66 @@ fn parse_or(s: Span) -> IResult<Span, Term> {
     Ok((s, left))
 }
 
-pub fn parse_term(s: Span) -> IResult<Span, Term> {
+fn parse_when_keyword(s: Span) -> IResult<Span, ()> {
+    let (s, _) = tag("when")(s)?;
+    if s.fragment().chars().next().map_or(false, |c| c.is_alphanumeric() || c == '_') {
+        return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Tag)));
+    }
+    let (s, _) = ws1(s)?;
+    Ok((s, ()))
+}
+
+fn parse_otherwise_keyword(s: Span) -> IResult<Span, ()> {
+    let (s, _) = tag("otherwise")(s)?;
+    if s.fragment().chars().next().map_or(false, |c| c.is_alphanumeric() || c == '_') {
+        return Err(nom::Err::Error(nom::error::Error::new(s, nom::error::ErrorKind::Tag)));
+    }
+    let (s, _) = ws0(s)?;
+    let (s, _) = char(':')(s)?;
+    Ok((s, ()))
+}
+
+fn parse_comma_or_newline(s: Span) -> IResult<Span, ()> {
+    let start = s;
+    let (s, _) = ws0(s)?;
+    let consumed = &start.fragment()[..(s.location_offset() - start.location_offset())];
+    
+    // Check for comma
+    if let Ok((s2, _)) = char::<Span, nom::error::Error<Span>>(',')(s) {
+        return Ok((s2, ()));
+    }
+    
+    // Otherwise require that we consumed at least one newline
+    if consumed.contains('\n') {
+        Ok((s, ()))
+    } else {
+        Err(nom::Err::Error(nom::error::Error::new(start, nom::error::ErrorKind::Char)))
+    }
+}
+
+fn parse_when(s: Span) -> IResult<Span, Term> {
+    if let Ok((s, _)) = parse_when_keyword(s) {
+        let (s, guard) = parse_or(s)?;
+        let (s, _) = ws0(s)?;
+        let (s, _) = char(':')(s)?;
+        let (s, _) = ws0(s)?;
+        let (s, then_branch) = parse_or(s)?;
+        let (s, _) = parse_comma_or_newline(s)?;
+        let (s, _) = ws0(s)?;
+        let (s, _) = parse_otherwise_keyword(s)?;
+        let (s, _) = ws0(s)?;
+        let (s, else_branch) = parse_when(s)?;
+        
+        return Ok((s, Term::App {
+            rel: ast_rel("cond"),
+            args: vec![guard, then_branch, else_branch],
+        }));
+    }
+    
+    // Fall through to or
     parse_or(s)
+}
+
+pub fn parse_term(s: Span) -> IResult<Span, Term> {
+    parse_when(s)
 }

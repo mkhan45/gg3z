@@ -91,12 +91,14 @@ State variables in draw terms are interpolated with current values.
 - `or(P, Q)` — disjunction
 - `not(P)` — negation (via failure to prove)
 - `eq(X, Y)` — structural unification
+- `cond(C, P, Q)` — if C then P else Q (branches on provability of C)
 
 ### Operator Syntax (Sugar)
 Binary and unary operators as syntactic sugar. Precedence from lowest to highest:
 
 | Operator | Desugars to | Notes |
 |----------|-------------|-------|
+| `when C: P, otherwise: Q` | `cond(C, P, Q)` | Conditional (lowest precedence) |
 | `a \| b`, `a ∨ b` | `or(a, b)` | Disjunction |
 | `a & b`, `a ∧ b` | `and(a, b)` | Conjunction |
 | `<`, `<=`, `>`, `>=` | `int_lt`, `int_le`, `int_gt`, `int_ge` | Integer comparison |
@@ -106,6 +108,23 @@ Binary and unary operators as syntactic sugar. Precedence from lowest to highest
 | `!a`, `¬a` | `not(a)` | Negation (unary prefix) |
 
 All binary operators are left-associative. Parentheses work for grouping: `(a | b) & c`.
+
+**Conditional syntax:**
+```
+# Inline (comma required before otherwise)
+when X > 0: positive, otherwise: non_positive
+
+# Multiline (newline serves as separator)
+when X > 0:
+    positive
+otherwise:
+    non_positive
+
+# Nesting in else branch
+when A: foo, otherwise: when B: bar, otherwise: baz
+```
+
+Reserved keywords: `when`, `otherwise` (cannot be used as atoms or relation names).
 
 ### SMT Relations (solved via Z3)
 ```

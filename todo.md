@@ -1,9 +1,9 @@
 # Soon
-- [X] Comments
-- Built-in `true()` prop/fact
 - Syntax sugar for `cond`
 - Interactive state querying
 - Forward compilation
+- [X] Comments
+- [X] Built-in `true()` prop/fact
 
 # Future
 - Better parse errors?

@@ -9,7 +9,6 @@ Begin Facts:
     ObstacleX = 100.0
     ObstacleVX = 1.5
     Dead = no
-    true()
 End Facts
 
 Begin Global:
@@ -31,17 +30,18 @@ End Global
 
 Begin Stage Control:
     Begin State Constraints:
-        cond(shouldJump(), 
-            next(RunnerVY) = 3.5, 
-            next(RunnerVY) = RunnerVY)
+        when shouldJump(): next(RunnerVY) = 3.5
+        otherwise: next(RunnerVY) = RunnerVY
 
-        cond(shouldRespawnObstacle(), 
-            next(ObstacleX) = 100.0 & real_add(ObstacleVX, 0.25, next(ObstacleVX)),
-            real_sub(ObstacleX, ObstacleVX, next(ObstacleX)) & next(ObstacleVX) = ObstacleVX)
+        when shouldRespawnObstacle():
+            next(ObstacleX) = 100.0 & 
+            real_add(ObstacleVX, 0.25, next(ObstacleVX))
+        otherwise:
+            real_sub(ObstacleX, ObstacleVX, next(ObstacleX)) &
+            next(ObstacleVX) = ObstacleVX
 
-        cond(collided(), 
-            next(Dead) = yes,
-            next(Dead) = Dead)
+        when collided(): next(Dead) = yes
+        otherwise: next(Dead) = Dead
     End State Constraints
 End Stage Control
 
@@ -50,9 +50,12 @@ Begin Stage Physics:
         real_sub(RunnerVY, 0.5, NewVY)
         real_add(RunnerY, RunnerVY, NewY)
 
-        cond(NewY .> 0.0, 
-            real_sub(RunnerVY, 0.5, next(RunnerVY)) & real_add(RunnerY, RunnerVY, next(RunnerY)),
-            next(RunnerY) = 0.0 & next(RunnerVY) = 0.0)
+        when NewY .> 0.0:
+            real_sub(RunnerVY, 0.5, next(RunnerVY)) &
+            real_add(RunnerY, RunnerVY, next(RunnerY))
+        otherwise:
+            next(RunnerY) = 0.0 &
+            next(RunnerVY) = 0.0
     End State Constraints
 End Stage Physics
 

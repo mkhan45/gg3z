@@ -828,3 +828,134 @@ fn test_comment_with_hash_in_string_context() {
     // Should leave the newline and nothing else
     assert!(remaining.fragment().starts_with(" #") || remaining.fragment().starts_with("#") || remaining.fragment().trim().is_empty() || remaining.fragment().starts_with("\n"));
 }
+
+// ============================================================================
+// When/otherwise (cond) tests
+// ============================================================================
+
+#[test]
+fn test_parse_when_otherwise_inline() {
+    let input = Span::new("when X = 1: foo(X), otherwise: bar(X)");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+        // Guard: eq(X, 1)
+        assert_binop(&args[0], "eq", |eq_args| {
+            assert!(matches!(&eq_args[0], Term::Var { name } if name == "X"));
+            assert!(matches!(&eq_args[1], Term::Int { val } if *val == 1));
+        });
+        // Then branch: foo(X)
+        assert_binop(&args[1], "foo", |foo_args| {
+            assert_eq!(foo_args.len(), 1);
+        });
+        // Else branch: bar(X)
+        assert_binop(&args[2], "bar", |bar_args| {
+            assert_eq!(bar_args.len(), 1);
+        });
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_when_otherwise_multiline() {
+    let input = Span::new("when X = 1:\n    foo(X)\notherwise:\n    bar(X)");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+        assert_binop(&args[0], "eq", |_| {});
+        assert_binop(&args[1], "foo", |_| {});
+        assert_binop(&args[2], "bar", |_| {});
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_when_otherwise_nested() {
+    // Nested when/otherwise in else branch
+    let input = Span::new("when A: foo, otherwise: when B: bar, otherwise: baz");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+        assert!(matches!(&args[0], Term::Var { name } if name == "A"));
+        assert!(matches!(&args[1], Term::Atom { text } if text == "foo"));
+        // Else branch is another cond
+        assert_binop(&args[2], "cond", |inner_args| {
+            assert_eq!(inner_args.len(), 3);
+            assert!(matches!(&inner_args[0], Term::Var { name } if name == "B"));
+            assert!(matches!(&inner_args[1], Term::Atom { text } if text == "bar"));
+            assert!(matches!(&inner_args[2], Term::Atom { text } if text == "baz"));
+        });
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_when_otherwise_with_operators() {
+    // when with or in guard - should bind looser than or
+    let input = Span::new("when A | B: foo, otherwise: bar");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+        // Guard should be or(A, B)
+        assert_binop(&args[0], "or", |or_args| {
+            assert!(matches!(&or_args[0], Term::Var { name } if name == "A"));
+            assert!(matches!(&or_args[1], Term::Var { name } if name == "B"));
+        });
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_when_otherwise_complex_branches() {
+    let input = Span::new("when X > 0 & Y > 0: positive, otherwise: non_positive");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+        // Guard should be and(int_gt(X, 0), int_gt(Y, 0))
+        assert_binop(&args[0], "and", |and_args| {
+            assert_binop(&and_args[0], "int_gt", |_| {});
+            assert_binop(&and_args[1], "int_gt", |_| {});
+        });
+        assert!(matches!(&args[1], Term::Atom { text } if text == "positive"));
+        assert!(matches!(&args[2], Term::Atom { text } if text == "non_positive"));
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_when_otherwise_reserved_keywords() {
+    // "when" should not be parseable as an atom
+    let input = Span::new("when");
+    let result = parse_term(input);
+    assert!(result.is_err(), "Expected 'when' as standalone to fail");
+    
+    // "otherwise" should not be parseable as an atom
+    let input2 = Span::new("otherwise");
+    let result2 = parse_term(input2);
+    assert!(result2.is_err(), "Expected 'otherwise' as standalone to fail");
+}
+
+#[test]
+fn test_when_otherwise_comma_required() {
+    // Missing comma and no newline should fail
+    let input = Span::new("when A: foo otherwise: bar");
+    let result = parse_term(input);
+    assert!(result.is_err(), "Expected missing separator to fail");
+}
+
+#[test]
+fn test_when_otherwise_with_comma_and_newline() {
+    // Both comma and newline should work
+    let input = Span::new("when A: foo,\notherwise: bar");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "cond", |args| {
+        assert_eq!(args.len(), 3);
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
