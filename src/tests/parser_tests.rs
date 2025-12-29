@@ -959,3 +959,79 @@ fn test_when_otherwise_with_comma_and_newline() {
     });
     assert_eq!(*remaining.fragment(), "");
 }
+
+// ============================================================================
+// Preserve desugaring tests
+// ============================================================================
+
+#[test]
+fn test_parse_preserve_desugars_to_eq_next() {
+    // preserve(X) should desugar to eq(next(X), X)
+    let input = Span::new("preserve(X)");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "eq", |args| {
+        assert_eq!(args.len(), 2);
+        // First arg should be next(X)
+        assert_binop(&args[0], "next", |next_args| {
+            assert_eq!(next_args.len(), 1);
+            assert!(matches!(&next_args[0], Term::Var { name } if name == "X"));
+        });
+        // Second arg should be X
+        assert!(matches!(&args[1], Term::Var { name } if name == "X"));
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_preserve_with_atom() {
+    // preserve(foo) should work with atoms too
+    let input = Span::new("preserve(foo)");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "eq", |args| {
+        assert_eq!(args.len(), 2);
+        assert_binop(&args[0], "next", |next_args| {
+            assert!(matches!(&next_args[0], Term::Atom { text } if text == "foo"));
+        });
+        assert!(matches!(&args[1], Term::Atom { text } if text == "foo"));
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_preserve_in_conjunction() {
+    // preserve(X) & preserve(Y) should work
+    let input = Span::new("preserve(X) & preserve(Y)");
+    let (remaining, term) = parse_term(input).unwrap();
+    
+    assert_binop(&term, "and", |args| {
+        assert_eq!(args.len(), 2);
+        assert_binop(&args[0], "eq", |eq_args| {
+            assert_binop(&eq_args[0], "next", |_| {});
+        });
+        assert_binop(&args[1], "eq", |eq_args| {
+            assert_binop(&eq_args[0], "next", |_| {});
+        });
+    });
+    assert_eq!(*remaining.fragment(), "");
+}
+
+#[test]
+fn test_parse_preserve_wrong_arity() {
+    // preserve with 0 args should NOT desugar (regular app)
+    let input = Span::new("preserve()");
+    let (remaining, term) = parse_term(input).unwrap();
+    assert_binop(&term, "preserve", |args| {
+        assert_eq!(args.len(), 0);
+    });
+    assert_eq!(*remaining.fragment(), "");
+    
+    // preserve with 2 args should NOT desugar (regular app)
+    let input2 = Span::new("preserve(X, Y)");
+    let (remaining2, term2) = parse_term(input2).unwrap();
+    assert_binop(&term2, "preserve", |args| {
+        assert_eq!(args.len(), 2);
+    });
+    assert_eq!(*remaining2.fragment(), "");
+}

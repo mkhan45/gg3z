@@ -399,6 +399,19 @@ fn parse_app(s: Span) -> IResult<Span, Term> {
         char(')'),
     ).parse(s)?;
 
+    // Desugar preserve(X) to eq(next(X), X)
+    if rel_name == "preserve" && args.len() == 1 {
+        let arg = args.into_iter().next().unwrap();
+        let next_arg = Term::App {
+            rel: ast_rel("next"),
+            args: vec![arg.clone()],
+        };
+        return Ok((s, Term::App {
+            rel: ast_rel("eq"),
+            args: vec![next_arg, arg],
+        }));
+    }
+
     let rel = AstRel { name: rel_name.to_string() };
 
     Ok((s, Term::App { rel, args }))

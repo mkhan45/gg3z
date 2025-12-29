@@ -96,17 +96,17 @@ End Global
 Begin Stage Control:
     Begin State Constraints:
         when shouldJump(): next(RunnerVY) = 3.5
-        otherwise: next(RunnerVY) = RunnerVY
+        otherwise: preserve(RunnerVY)
 
         when shouldRespawnObstacle():
             next(ObstacleX) = 100.0 & 
             real_add(ObstacleVX, 0.25, next(ObstacleVX))
         otherwise:
             real_sub(ObstacleX, ObstacleVX, next(ObstacleX)) &
-            next(ObstacleVX) = ObstacleVX
+            preserve(ObstacleVX)
 
         when collided(): next(Dead) = yes
-        otherwise: next(Dead) = Dead
+        otherwise: preserve(Dead)
     End State Constraints
 End Stage Control
 

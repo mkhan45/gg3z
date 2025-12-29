@@ -327,6 +327,13 @@ int_sub(Health, 10, next(Health))   # next Health = current - 10
 ```
 Without `next()`, `int_sub(Health, 10, Health)` would require `Health - 10 = Health` (unsatisfiable).
 
+### The `preserve()` Sugar
+`preserve(X)` is syntactic sugar that desugars to `next(X) = X`, meaning the state variable keeps its current value:
+```
+preserve(Health)                    # Health stays unchanged
+# equivalent to: next(Health) = Health
+```
+
 ### State Constraints
 Defined in stages; must have **exactly one solution** (deterministic updates):
 ```
