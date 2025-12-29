@@ -1,6 +1,6 @@
 #!/bin/sh
 # cargo build --target=wasm32-unknown-unknown
-# wasm-bindgen --target web --out-dir docs --no-typescript target/wasm32-unknown-unknown/debug/langame.wasm
+# wasm-bindgen --target web --out-dir docs --no-typescript target/wasm32-unknown-unknown/debug/gg3z.wasm
 
 source ../emsdk/emsdk_env.sh
 
@@ -21,9 +21,9 @@ export RUSTFLAGS
 cargo build --target=wasm32-unknown-emscripten $CARGO_ARGS
 
 if $RELEASE; then
-    cp target/wasm32-unknown-emscripten/release/langame.wasm docs
-    cp target/wasm32-unknown-emscripten/release/langame.js docs
+    cp target/wasm32-unknown-emscripten/release/gg3z.wasm docs
+    cp target/wasm32-unknown-emscripten/release/gg3z.js docs
 else
-    cp target/wasm32-unknown-emscripten/debug/langame.wasm docs
-    cp target/wasm32-unknown-emscripten/debug/langame.js docs
+    cp target/wasm32-unknown-emscripten/debug/gg3z.wasm docs
+    cp target/wasm32-unknown-emscripten/debug/gg3z.js docs
 fi

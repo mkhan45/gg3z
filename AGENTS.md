@@ -1,4 +1,4 @@
-# Langame Reference
+# GG3Z Reference
 
 A miniKanren-style relational logic language with SMT constraint support, designed for game logic.
 
@@ -144,7 +144,7 @@ A rule `P -------- C` means: "to prove C, prove P." Facts are axioms—always pr
 A query asks: "find substitutions θ such that θ(query) is provable from facts + rules."
 
 ### Proof Search
-Langame uses **SLD resolution** with **back-chaining**:
+GG3Z uses **SLD resolution** with **back-chaining**:
 1. Start with query as the goal
 2. For each goal, find a fact or rule head that unifies with it
 3. Replace goal with the rule's premise (instantiated)

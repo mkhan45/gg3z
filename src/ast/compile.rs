@@ -11,7 +11,7 @@ use nom::Parser;
 use nom::multi::many0;
 use nom::character::complete::multispace0;
 
-const STDLIB: &str = include_str!("../stdlib.l");
+const STDLIB: &str = include_str!("../stdlib.gg3z");
 
 fn parse_stdlib_rules() -> Vec<Rule> {
     let input: Span = STDLIB.into();

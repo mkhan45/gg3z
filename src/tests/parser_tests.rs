@@ -128,8 +128,8 @@ fn test_parse_nested_app() {
 fn test_file_simple_rule() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_rule.l")
-        .expect("Failed to read tests/parser/test_rule.l");
+    let contents = fs::read_to_string("tests/parser/test_rule.gg3z")
+    .expect("Failed to read tests/parser/test_rule.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, rule) = parse_rule(input).unwrap();
@@ -178,8 +178,8 @@ fn test_file_simple_rule() {
 fn test_file_nested_rule() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_nested.l")
-        .expect("Failed to read tests/parser/test_nested.l");
+    let contents = fs::read_to_string("tests/parser/test_nested.gg3z")
+    .expect("Failed to read tests/parser/test_nested.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, rule) = parse_rule(input).unwrap();
@@ -237,8 +237,8 @@ fn test_file_nested_rule() {
 fn test_file_mixed_types() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_mixed.l")
-        .expect("Failed to read tests/parser/test_mixed.l");
+    let contents = fs::read_to_string("tests/parser/test_mixed.gg3z")
+    .expect("Failed to read tests/parser/test_mixed.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, rule) = parse_rule(input).unwrap();
@@ -287,8 +287,8 @@ fn test_file_mixed_types() {
 fn test_file_invalid() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_invalid.l")
-        .expect("Failed to read tests/parser/test_invalid.l");
+    let contents = fs::read_to_string("tests/parser/test_invalid.gg3z")
+    .expect("Failed to read tests/parser/test_invalid.gg3z");
     let input = Span::new(&contents);
 
     let result = parse_rule(input);
@@ -312,8 +312,8 @@ fn test_parse_stage() {
 fn test_file_stage() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_stage.l")
-        .expect("Failed to read tests/parser/test_stage.l");
+    let contents = fs::read_to_string("tests/parser/test_stage.gg3z")
+    .expect("Failed to read tests/parser/test_stage.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, stage) = parse_stage(input).unwrap();
@@ -348,8 +348,8 @@ fn test_file_stage() {
 fn test_file_empty_stage() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_empty_stage.l")
-        .expect("Failed to read tests/parser/test_empty_stage.l");
+    let contents = fs::read_to_string("tests/parser/test_empty_stage.gg3z")
+    .expect("Failed to read tests/parser/test_empty_stage.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, stage) = parse_stage(input).unwrap();
@@ -364,8 +364,8 @@ fn test_file_empty_stage() {
 fn test_file_stage_name_mismatch() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_stage_mismatch.l")
-        .expect("Failed to read tests/parser/test_stage_mismatch.l");
+    let contents = fs::read_to_string("tests/parser/test_stage_mismatch.gg3z")
+    .expect("Failed to read tests/parser/test_stage_mismatch.gg3z");
     let input = Span::new(&contents);
 
     let result = parse_stage(input);
@@ -393,8 +393,8 @@ fn test_parse_module() {
 fn test_file_module() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_module.l")
-        .expect("Failed to read tests/parser/test_module.l");
+    let contents = fs::read_to_string("tests/parser/test_module.gg3z")
+    .expect("Failed to read tests/parser/test_module.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, module) = parse_module(input).unwrap();
@@ -419,8 +419,8 @@ fn test_file_module() {
 fn test_file_empty_module() {
     use std::fs;
 
-    let contents = fs::read_to_string("tests/parser/test_empty_module.l")
-        .expect("Failed to read tests/parser/test_empty_module.l");
+    let contents = fs::read_to_string("tests/parser/test_empty_module.gg3z")
+    .expect("Failed to read tests/parser/test_empty_module.gg3z");
     let input = Span::new(&contents);
 
     let (remaining, module) = parse_module(input).unwrap();

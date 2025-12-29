@@ -567,8 +567,8 @@ End Global
 
 #[test]
 fn test_eager_constraint_pruning() {
-    let input = std::fs::read_to_string("sample/inventory.l")
-        .expect("Failed to read sample/inventory.l");
+    let input = std::fs::read_to_string("sample/inventory.gg3z")
+        .expect("Failed to read sample/inventory.gg3z");
     let mut program = parse_and_compile(&input);
 
     let cartcost_rel = program
@@ -617,8 +617,8 @@ fn test_eager_constraint_pruning() {
 
 #[test]
 fn test_cartcost_with_items() {
-    let input = std::fs::read_to_string("sample/inventory.l")
-        .expect("Failed to read sample/inventory.l");
+    let input = std::fs::read_to_string("sample/inventory.gg3z")
+        .expect("Failed to read sample/inventory.gg3z");
     let mut program = parse_and_compile(&input);
 
     let cartcost_rel = program
@@ -652,8 +652,8 @@ fn test_cartcost_with_items() {
 
 #[test]
 fn test_cartcost_specific_total() {
-    let input = std::fs::read_to_string("sample/inventory.l")
-        .expect("Failed to read sample/inventory.l");
+    let input = std::fs::read_to_string("sample/inventory.gg3z")
+        .expect("Failed to read sample/inventory.gg3z");
     let mut program = parse_and_compile(&input);
 
     let cartcost_rel = program
@@ -685,8 +685,8 @@ fn test_cartcost_specific_total() {
 #[test]
 fn test_cartcost_unbound_maxsize() {
     // Regression test: cartCost(A, 25, B) should work even when B (MaxSize) is unbound
-    let input = std::fs::read_to_string("sample/inventory.l")
-        .expect("Failed to read sample/inventory.l");
+    let input = std::fs::read_to_string("sample/inventory.gg3z")
+        .expect("Failed to read sample/inventory.gg3z");
     let mut program = parse_and_compile(&input);
 
     let cartcost_rel = program

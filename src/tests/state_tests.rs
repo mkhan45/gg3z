@@ -50,8 +50,8 @@ End Global
 
     #[test]
     fn test_state_constraint_basic() {
-        let input = std::fs::read_to_string("sample/state_basic.l")
-            .expect("Failed to read sample/state_basic.l");
+        let input = std::fs::read_to_string("sample/state_basic.gg3z")
+        .expect("Failed to read sample/state_basic.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -65,8 +65,8 @@ End Global
 
     #[test]
     fn test_state_constraint_multiple_updates() {
-        let input = std::fs::read_to_string("sample/state_multiple.l")
-            .expect("Failed to read sample/state_multiple.l");
+        let input = std::fs::read_to_string("sample/state_multiple.gg3z")
+        .expect("Failed to read sample/state_multiple.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -82,8 +82,8 @@ End Global
 
     #[test]
     fn test_state_constraint_repeated_execution() {
-        let input = std::fs::read_to_string("sample/state_basic.l")
-            .expect("Failed to read sample/state_basic.l");
+        let input = std::fs::read_to_string("sample/state_basic.gg3z")
+            .expect("Failed to read sample/state_basic.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -102,8 +102,8 @@ End Global
 
     #[test]
     fn test_state_constraint_ambiguous_error() {
-        let input = std::fs::read_to_string("sample/state_ambiguous.l")
-            .expect("Failed to read sample/state_ambiguous.l");
+        let input = std::fs::read_to_string("sample/state_ambiguous.gg3z")
+        .expect("Failed to read sample/state_ambiguous.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -257,8 +257,8 @@ End Stage TestStage
 
     #[test]
     fn test_runner_should_jump_rule() {
-        let input = std::fs::read_to_string("sample/runner.l")
-            .expect("Failed to read sample/runner.l");
+        let input = std::fs::read_to_string("sample/runner.gg3z")
+        .expect("Failed to read sample/runner.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -400,8 +400,8 @@ End Global
 
     #[test]
     fn test_query_after_stage_execution() {
-        let input = std::fs::read_to_string("sample/state_basic.l")
-            .expect("Failed to read sample/state_basic.l");
+        let input = std::fs::read_to_string("sample/state_basic.gg3z")
+            .expect("Failed to read sample/state_basic.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
@@ -436,8 +436,8 @@ End Global
 
     #[test]
     fn test_query_after_runner_stage() {
-        let input = std::fs::read_to_string("sample/runner.l")
-            .expect("Failed to read sample/runner.l");
+        let input = std::fs::read_to_string("sample/runner.gg3z")
+            .expect("Failed to read sample/runner.gg3z");
         
         let mut frontend = Frontend::new();
         frontend.load(&input).unwrap();
