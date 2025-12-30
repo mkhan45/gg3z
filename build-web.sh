@@ -27,3 +27,5 @@ else
     cp target/wasm32-unknown-emscripten/debug/gg3z.wasm docs
     cp target/wasm32-unknown-emscripten/debug/gg3z.js docs
 fi
+
+cp sample/runner.gg3z docs/sample.gg3z
