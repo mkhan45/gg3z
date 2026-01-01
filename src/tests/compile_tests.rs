@@ -64,13 +64,11 @@ End Global
     let clause = program.global_rules.iter().find(|c| c.name == "Increment").unwrap();
     let body_prop = program.props.get(clause.body);
     match body_prop {
-        Prop::App { rel, args } => {
-            let rel_info = program.rels.get(*rel);
-            assert_eq!(rel_info.name, "int_add");
-            assert_eq!(rel_info.kind, RelKind::SMTInt);
+        Prop::Constraint { kind, args } => {
+            assert_eq!(*kind, ConstraintKind::IntAdd);
             assert_eq!(args.len(), 3);
         }
-        _ => panic!("Expected App prop"),
+        _ => panic!("Expected Constraint prop"),
     }
 }
 

@@ -79,21 +79,117 @@ pub enum Prop {
     Or(PropId, PropId),
     Not(PropId),
     Cond(PropId, PropId, PropId),
+    /// User-defined relation application (resolved via back-chaining)
     App { rel: RelId, args: Vec<TermId> },
+    /// SMT constraint (deferred to Z3 solver)
+    Constraint { kind: ConstraintKind, args: Vec<TermId> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RelKind {
-    User,
-    SMTInt,
-    SMTReal,
+/// Constraint kinds for SMT solving. These represent arithmetic constraints
+/// that are deferred to Z3 rather than resolved through back-chaining.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstraintKind {
+    // Integer constraints
+    IntEq,
+    IntNeq,
+    IntLt,
+    IntLe,
+    IntGt,
+    IntGe,
+    IntAdd,
+    IntSub,
+    IntMul,
+    IntDiv,
+    // Real constraints
+    RealEq,
+    RealNeq,
+    RealLt,
+    RealLe,
+    RealGt,
+    RealGe,
+    RealAdd,
+    RealSub,
+    RealMul,
+    RealDiv,
+}
+
+impl ConstraintKind {
+    /// Returns the expected arity for this constraint kind.
+    pub fn arity(self) -> usize {
+        match self {
+            // Binary comparisons
+            ConstraintKind::IntEq | ConstraintKind::IntNeq |
+            ConstraintKind::IntLt | ConstraintKind::IntLe |
+            ConstraintKind::IntGt | ConstraintKind::IntGe |
+            ConstraintKind::RealEq | ConstraintKind::RealNeq |
+            ConstraintKind::RealLt | ConstraintKind::RealLe |
+            ConstraintKind::RealGt | ConstraintKind::RealGe => 2,
+            // Ternary arithmetic
+            ConstraintKind::IntAdd | ConstraintKind::IntSub |
+            ConstraintKind::IntMul | ConstraintKind::IntDiv |
+            ConstraintKind::RealAdd | ConstraintKind::RealSub |
+            ConstraintKind::RealMul | ConstraintKind::RealDiv => 3,
+        }
+    }
+
+    /// Parse a constraint kind from a relation name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "int_eq" => Some(ConstraintKind::IntEq),
+            "int_neq" => Some(ConstraintKind::IntNeq),
+            "int_lt" => Some(ConstraintKind::IntLt),
+            "int_le" => Some(ConstraintKind::IntLe),
+            "int_gt" => Some(ConstraintKind::IntGt),
+            "int_ge" => Some(ConstraintKind::IntGe),
+            "int_add" => Some(ConstraintKind::IntAdd),
+            "int_sub" => Some(ConstraintKind::IntSub),
+            "int_mul" => Some(ConstraintKind::IntMul),
+            "int_div" => Some(ConstraintKind::IntDiv),
+            "real_eq" => Some(ConstraintKind::RealEq),
+            "real_neq" => Some(ConstraintKind::RealNeq),
+            "real_lt" => Some(ConstraintKind::RealLt),
+            "real_le" => Some(ConstraintKind::RealLe),
+            "real_gt" => Some(ConstraintKind::RealGt),
+            "real_ge" => Some(ConstraintKind::RealGe),
+            "real_add" => Some(ConstraintKind::RealAdd),
+            "real_sub" => Some(ConstraintKind::RealSub),
+            "real_mul" => Some(ConstraintKind::RealMul),
+            "real_div" => Some(ConstraintKind::RealDiv),
+            _ => None,
+        }
+    }
+
+    /// Get the name of this constraint kind (for debugging/display).
+    pub fn name(self) -> &'static str {
+        match self {
+            ConstraintKind::IntEq => "int_eq",
+            ConstraintKind::IntNeq => "int_neq",
+            ConstraintKind::IntLt => "int_lt",
+            ConstraintKind::IntLe => "int_le",
+            ConstraintKind::IntGt => "int_gt",
+            ConstraintKind::IntGe => "int_ge",
+            ConstraintKind::IntAdd => "int_add",
+            ConstraintKind::IntSub => "int_sub",
+            ConstraintKind::IntMul => "int_mul",
+            ConstraintKind::IntDiv => "int_div",
+            ConstraintKind::RealEq => "real_eq",
+            ConstraintKind::RealNeq => "real_neq",
+            ConstraintKind::RealLt => "real_lt",
+            ConstraintKind::RealLe => "real_le",
+            ConstraintKind::RealGt => "real_gt",
+            ConstraintKind::RealGe => "real_ge",
+            ConstraintKind::RealAdd => "real_add",
+            ConstraintKind::RealSub => "real_sub",
+            ConstraintKind::RealMul => "real_mul",
+            ConstraintKind::RealDiv => "real_div",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RelInfo {
     pub name: String,
     pub arity: usize,
-    pub kind: RelKind,
 }
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,5 @@
 use crate::solver::*;
-use crate::solver::ir::{Program, Prop, Term, Var};
+use crate::solver::ir::{ConstraintKind, Program, Prop, Term, Var};
 use crate::ast::compile::compile;
 use crate::ast::parser;
 use nom::Finish;
@@ -268,13 +268,6 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let int_add_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "int_add")
-            .map(|(id, _)| id)
-            .unwrap();
-
         let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
@@ -282,8 +275,8 @@ End Global
         let one_term = program.terms.alloc(Term::Int(1));
 
         // int_add(1, 1, B) should give B = 2
-        let query_prop = program.props.alloc(Prop::App {
-            rel: int_add_rel,
+        let query_prop = program.props.alloc(Prop::Constraint {
+            kind: ConstraintKind::IntAdd,
             args: vec![one_term, one_term, var_b_term],
         });
 
@@ -313,13 +306,6 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let int_add_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "int_add")
-            .map(|(id, _)| id)
-            .unwrap();
-
         let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
@@ -328,8 +314,8 @@ End Global
         let five_term = program.terms.alloc(Term::Int(5));
 
         // int_add(2, B, 5) should give B = 3
-        let query_prop = program.props.alloc(Prop::App {
-            rel: int_add_rel,
+        let query_prop = program.props.alloc(Prop::Constraint {
+            kind: ConstraintKind::IntAdd,
             args: vec![two_term, var_b_term, five_term],
         });
 
@@ -438,13 +424,6 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let real_add_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "real_add")
-            .map(|(id, _)| id)
-            .unwrap();
-
         let var_c = program.vars.alloc(Var {
             name: "C".to_string(),
         });
@@ -453,8 +432,8 @@ End Global
         let two_term = program.terms.alloc(Term::Float(2.5));
 
         // real_add(1.5, 2.5, C) should give C = 4.0
-        let query_prop = program.props.alloc(Prop::App {
-            rel: real_add_rel,
+        let query_prop = program.props.alloc(Prop::Constraint {
+            kind: ConstraintKind::RealAdd,
             args: vec![one_term, two_term, var_c_term],
         });
 
@@ -484,13 +463,6 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let real_add_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "real_add")
-            .map(|(id, _)| id)
-            .unwrap();
-
         let var_b = program.vars.alloc(Var {
             name: "B".to_string(),
         });
@@ -499,8 +471,8 @@ End Global
         let five_term = program.terms.alloc(Term::Float(5.0));
 
         // real_add(2.0, B, 5.0) should give B = 3.0
-        let query_prop = program.props.alloc(Prop::App {
-            rel: real_add_rel,
+        let query_prop = program.props.alloc(Prop::Constraint {
+            kind: ConstraintKind::RealAdd,
             args: vec![two_term, var_b_term, five_term],
         });
 
@@ -530,13 +502,6 @@ End Global
 "#;
         let mut program = parse_and_compile(input);
 
-        let real_div_rel = program
-            .rels
-            .iter()
-            .find(|(_, r)| r.name == "real_div")
-            .map(|(id, _)| id)
-            .unwrap();
-
         let var_c = program.vars.alloc(Var {
             name: "C".to_string(),
         });
@@ -545,8 +510,8 @@ End Global
         let four_term = program.terms.alloc(Term::Float(4.0));
 
         // real_div(10.0, 4.0, C) should give C = 2.5
-        let query_prop = program.props.alloc(Prop::App {
-            rel: real_div_rel,
+        let query_prop = program.props.alloc(Prop::Constraint {
+            kind: ConstraintKind::RealDiv,
             args: vec![ten_term, four_term, var_c_term],
         });
 

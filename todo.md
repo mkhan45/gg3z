@@ -1,7 +1,7 @@
 # Soon
-- Syntax sugar for `cond`
 - Interactive state querying
 - Forward compilation
+- [X] Syntax sugar for `cond`
 - [X] Comments
 - [X] Built-in `true()` prop/fact
 

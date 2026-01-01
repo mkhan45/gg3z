@@ -5,7 +5,7 @@ use std::cell::RefCell;
 
 use im::{HashMap, Vector};
 
-use crate::solver::ir::{Clause, Program, Prop, PropId, RelId, RelKind, Term, TermId, Var, VarId};
+use crate::solver::ir::{Clause, ConstraintKind, Program, Prop, PropId, RelId, Term, TermId, Var, VarId};
 use crate::solver::arena::Arena;
 
 #[cfg(feature = "profile")]
@@ -145,33 +145,14 @@ impl Subst {
 }
 
 #[derive(Debug, Clone)]
-pub enum ArithConstraint {
-    IntEq(TermId, TermId),
-    IntLt(TermId, TermId),
-    IntLe(TermId, TermId),
-    IntGt(TermId, TermId),
-    IntGe(TermId, TermId),
-    IntNeq(TermId, TermId),
-    IntAdd(TermId, TermId, TermId),
-    IntSub(TermId, TermId, TermId),
-    IntMul(TermId, TermId, TermId),
-    IntDiv(TermId, TermId, TermId),
-
-    RealEq(TermId, TermId),
-    RealLt(TermId, TermId),
-    RealLe(TermId, TermId),
-    RealGt(TermId, TermId),
-    RealGe(TermId, TermId),
-    RealNeq(TermId, TermId),
-    RealAdd(TermId, TermId, TermId),
-    RealSub(TermId, TermId, TermId),
-    RealMul(TermId, TermId, TermId),
-    RealDiv(TermId, TermId, TermId),
+pub struct Constraint {
+    pub kind: ConstraintKind,
+    pub args: Vec<TermId>,
 }
 
 #[derive(Clone, Default)]
 pub struct ConstraintStore {
-    constraints: Vector<ArithConstraint>,
+    constraints: Vector<Constraint>,
 }
 
 impl ConstraintStore {
@@ -181,36 +162,14 @@ impl ConstraintStore {
         }
     }
 
-    pub fn add(&self, c: ArithConstraint) -> Self {
+    pub fn add(&self, c: Constraint) -> Self {
         Self {
             constraints: self.constraints.clone() + Vector::unit(c),
         }
     }
 
-    pub fn is_ground_constraint(c: &ArithConstraint, subst: &Subst, program: &Program) -> bool {
-        let terms = match c {
-            ArithConstraint::IntEq(a, b)
-            | ArithConstraint::IntNeq(a, b)
-            | ArithConstraint::IntLt(a, b)
-            | ArithConstraint::IntLe(a, b)
-            | ArithConstraint::IntGt(a, b)
-            | ArithConstraint::IntGe(a, b)
-            | ArithConstraint::RealEq(a, b)
-            | ArithConstraint::RealNeq(a, b)
-            | ArithConstraint::RealLt(a, b)
-            | ArithConstraint::RealLe(a, b)
-            | ArithConstraint::RealGt(a, b)
-            | ArithConstraint::RealGe(a, b) => vec![*a, *b],
-            ArithConstraint::IntAdd(a, b, c)
-            | ArithConstraint::IntSub(a, b, c)
-            | ArithConstraint::IntMul(a, b, c)
-            | ArithConstraint::IntDiv(a, b, c)
-            | ArithConstraint::RealAdd(a, b, c)
-            | ArithConstraint::RealSub(a, b, c)
-            | ArithConstraint::RealMul(a, b, c)
-            | ArithConstraint::RealDiv(a, b, c) => vec![*a, *b, *c],
-        };
-        terms.iter().all(|t| {
+    pub fn is_ground_constraint(c: &Constraint, subst: &Subst, program: &Program) -> bool {
+        c.args.iter().all(|t| {
             let walked = subst.walk(*t, &program.terms);
             !matches!(program.terms.get(walked), Term::Var(_))
         })
@@ -218,7 +177,7 @@ impl ConstraintStore {
 
     /// Partition constraints into ground (fully determined) and non-ground (contains variables).
     /// Used during SLD resolution for eager constraint propagation.
-    fn partition_ground_constraints(&self, subst: &Subst, program: &Program) -> (Vec<ArithConstraint>, Vec<ArithConstraint>) {
+    fn partition_ground_constraints(&self, subst: &Subst, program: &Program) -> (Vec<Constraint>, Vec<Constraint>) {
         self.iter()
             .cloned()
             .partition(|c| Self::is_ground_constraint(c, subst, program))
@@ -246,7 +205,7 @@ impl ConstraintStore {
         Some((new_subst, remaining))
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &ArithConstraint> {
+    pub fn iter(&self) -> impl Iterator<Item = &Constraint> {
         self.constraints.iter()
     }
 
@@ -261,11 +220,7 @@ impl ConstraintStore {
     /// Final constraint validation: solve all constraints (ground and non-ground).
     /// Used after proof search completes to verify the solution satisfies all constraints.
     /// Critical for negation: ensures phantom proofs with unsatisfiable constraints are rejected.
-    pub fn solve_all(&self, subst: &Subst, program: &mut Program, z3_solver: &z3::Solver) -> Option<Subst> {
-        self.solve_constraints(subst, program, z3_solver)
-    }
-
-    fn solve_constraints(&self, subst: &Subst, program: &mut Program, z3_solver: &z3::Solver) -> Option<Subst> {
+    pub fn solve_constraints(&self, subst: &Subst, program: &mut Program, z3_solver: &z3::Solver) -> Option<Subst> {
         if self.is_empty() {
             return Some(subst.clone());
         }
@@ -294,7 +249,7 @@ impl ConstraintStore {
     }
 
     fn constraint_to_z3(
-        constraint: &ArithConstraint,
+        constraint: &Constraint,
         subst: &Subst,
         terms: &Arena<Term>,
         int_vars: &mut std::collections::HashMap<VarId, z3::ast::Int>,
@@ -310,43 +265,44 @@ impl ConstraintStore {
             terms.get(walked).to_z3_real(real_vars)
         };
 
-        match constraint {
-            ArithConstraint::IntAdd(a, b, c) => {
-                Some(z3::ast::Int::add(&[&to_int(*a)?, &to_int(*b)?]).eq(&to_int(*c)?))
+        let args = &constraint.args;
+        match constraint.kind {
+            ConstraintKind::IntAdd => {
+                Some(z3::ast::Int::add(&[&to_int(args[0])?, &to_int(args[1])?]).eq(&to_int(args[2])?))
             }
-            ArithConstraint::IntSub(a, b, c) => {
-                Some(z3::ast::Int::sub(&[&to_int(*a)?, &to_int(*b)?]).eq(&to_int(*c)?))
+            ConstraintKind::IntSub => {
+                Some(z3::ast::Int::sub(&[&to_int(args[0])?, &to_int(args[1])?]).eq(&to_int(args[2])?))
             }
-            ArithConstraint::IntMul(a, b, c) => {
-                Some(z3::ast::Int::mul(&[&to_int(*a)?, &to_int(*b)?]).eq(&to_int(*c)?))
+            ConstraintKind::IntMul => {
+                Some(z3::ast::Int::mul(&[&to_int(args[0])?, &to_int(args[1])?]).eq(&to_int(args[2])?))
             }
-            ArithConstraint::IntDiv(a, b, c) => {
-                Some(to_int(*a)?.div(&to_int(*b)?).eq(&to_int(*c)?))
+            ConstraintKind::IntDiv => {
+                Some(to_int(args[0])?.div(&to_int(args[1])?).eq(&to_int(args[2])?))
             }
-            ArithConstraint::IntEq(a, b) => Some(to_int(*a)?.eq(&to_int(*b)?)),
-            ArithConstraint::IntNeq(a, b) => Some(to_int(*a)?.eq(&to_int(*b)?).not()),
-            ArithConstraint::IntLt(a, b) => Some(to_int(*a)?.lt(&to_int(*b)?)),
-            ArithConstraint::IntLe(a, b) => Some(to_int(*a)?.le(&to_int(*b)?)),
-            ArithConstraint::IntGt(a, b) => Some(to_int(*a)?.gt(&to_int(*b)?)),
-            ArithConstraint::IntGe(a, b) => Some(to_int(*a)?.ge(&to_int(*b)?)),
-            ArithConstraint::RealAdd(a, b, c) => {
-                Some(z3::ast::Real::add(&[&to_real(*a)?, &to_real(*b)?]).eq(&to_real(*c)?))
+            ConstraintKind::IntEq => Some(to_int(args[0])?.eq(&to_int(args[1])?)),
+            ConstraintKind::IntNeq => Some(to_int(args[0])?.eq(&to_int(args[1])?).not()),
+            ConstraintKind::IntLt => Some(to_int(args[0])?.lt(&to_int(args[1])?)),
+            ConstraintKind::IntLe => Some(to_int(args[0])?.le(&to_int(args[1])?)),
+            ConstraintKind::IntGt => Some(to_int(args[0])?.gt(&to_int(args[1])?)),
+            ConstraintKind::IntGe => Some(to_int(args[0])?.ge(&to_int(args[1])?)),
+            ConstraintKind::RealAdd => {
+                Some(z3::ast::Real::add(&[&to_real(args[0])?, &to_real(args[1])?]).eq(&to_real(args[2])?))
             }
-            ArithConstraint::RealSub(a, b, c) => {
-                Some(z3::ast::Real::sub(&[&to_real(*a)?, &to_real(*b)?]).eq(&to_real(*c)?))
+            ConstraintKind::RealSub => {
+                Some(z3::ast::Real::sub(&[&to_real(args[0])?, &to_real(args[1])?]).eq(&to_real(args[2])?))
             }
-            ArithConstraint::RealMul(a, b, c) => {
-                Some(z3::ast::Real::mul(&[&to_real(*a)?, &to_real(*b)?]).eq(&to_real(*c)?))
+            ConstraintKind::RealMul => {
+                Some(z3::ast::Real::mul(&[&to_real(args[0])?, &to_real(args[1])?]).eq(&to_real(args[2])?))
             }
-            ArithConstraint::RealDiv(a, b, c) => {
-                Some(to_real(*a)?.div(&to_real(*b)?).eq(&to_real(*c)?))
+            ConstraintKind::RealDiv => {
+                Some(to_real(args[0])?.div(&to_real(args[1])?).eq(&to_real(args[2])?))
             }
-            ArithConstraint::RealEq(a, b) => Some(to_real(*a)?.eq(&to_real(*b)?)),
-            ArithConstraint::RealNeq(a, b) => Some(to_real(*a)?.eq(&to_real(*b)?).not()),
-            ArithConstraint::RealLt(a, b) => Some(to_real(*a)?.lt(&to_real(*b)?)),
-            ArithConstraint::RealLe(a, b) => Some(to_real(*a)?.le(&to_real(*b)?)),
-            ArithConstraint::RealGt(a, b) => Some(to_real(*a)?.gt(&to_real(*b)?)),
-            ArithConstraint::RealGe(a, b) => Some(to_real(*a)?.ge(&to_real(*b)?)),
+            ConstraintKind::RealEq => Some(to_real(args[0])?.eq(&to_real(args[1])?)),
+            ConstraintKind::RealNeq => Some(to_real(args[0])?.eq(&to_real(args[1])?).not()),
+            ConstraintKind::RealLt => Some(to_real(args[0])?.lt(&to_real(args[1])?)),
+            ConstraintKind::RealLe => Some(to_real(args[0])?.le(&to_real(args[1])?)),
+            ConstraintKind::RealGt => Some(to_real(args[0])?.gt(&to_real(args[1])?)),
+            ConstraintKind::RealGe => Some(to_real(args[0])?.ge(&to_real(args[1])?)),
         }
     }
 
@@ -414,7 +370,7 @@ impl State {
         }
     }
 
-    pub fn with_constraint(&self, c: ArithConstraint) -> Self {
+    pub fn with_constraint(&self, c: Constraint) -> Self {
         Self {
             subst: self.subst.clone(),
             constraints: self.constraints.add(c),
@@ -674,6 +630,20 @@ impl<'p> Solver<'p> {
                     })
                 }
             }
+            Prop::Constraint { kind, ref args } => {
+                let new_args: Vec<TermId> = args
+                    .iter()
+                    .map(|&t| self.rename_term(t, var_map))
+                    .collect();
+                if new_args == *args {
+                    prop_id
+                } else {
+                    self.program.props.alloc(Prop::Constraint {
+                        kind,
+                        args: new_args,
+                    })
+                }
+            }
         }
     }
 
@@ -717,7 +687,7 @@ impl<'p> Solver<'p> {
                         self.step_prop(remaining, goal, &mut neg_queue);
                     } else {
                         // Found a complete proof state - verify constraints are satisfiable
-                        if let Some(_solved_subst) = neg_state.constraints.solve_all(&neg_state.subst, self.program, &self.z3_solver) {
+                        if let Some(_solved_subst) = neg_state.constraints.solve_constraints(&neg_state.subst, self.program, &self.z3_solver) {
                              found_valid_solution = true;
                              break;
                          }
@@ -729,31 +699,19 @@ impl<'p> Solver<'p> {
                 }
             }
             Prop::App { rel, args } => {
-                let rel_info = self.program.rels.get(rel).clone();
-                match rel_info.kind {
-                    RelKind::User => {
-                        self.step_user_rel(&state, rel, &args, queue);
-                    }
-                    RelKind::SMTInt | RelKind::SMTReal => {
-                        let constraint = match rel_info.kind {
-                            RelKind::SMTInt => self.make_int_constraint(&rel_info.name, &args),
-                            RelKind::SMTReal => self.make_real_constraint(&rel_info.name, &args),
-                            RelKind::User => unreachable!(),
-                        };
-                        if let Some(c) = constraint {
-                            let new_state = state.with_constraint(c);
-                            if let Some((solved_subst, remaining)) = new_state
-                                .constraints
-                                .propagate_ground(&new_state.subst, self.program, &self.z3_solver)
-                            {
-                                queue.push(State {
-                                    subst: solved_subst,
-                                    constraints: remaining,
-                                    goals: new_state.goals,
-                                });
-                            }
-                        }
-                    }
+                self.step_user_rel(&state, rel, &args, queue);
+            }
+            Prop::Constraint { kind, args } => {
+                let new_state = state.with_constraint(Constraint { kind, args });
+                if let Some((solved_subst, remaining)) = new_state
+                    .constraints
+                    .propagate_ground(&new_state.subst, self.program, &self.z3_solver)
+                {
+                    queue.push(State {
+                        subst: solved_subst,
+                        constraints: remaining,
+                        goals: new_state.goals,
+                    });
                 }
             }
         }
@@ -805,39 +763,6 @@ impl<'p> Solver<'p> {
         }
     }
 
-    fn make_int_constraint(&self, name: &str, args: &[TermId]) -> Option<ArithConstraint> {
-        match (name, args) {
-            ("int_eq", [a, b]) => Some(ArithConstraint::IntEq(*a, *b)),
-            ("int_neq", [a, b]) => Some(ArithConstraint::IntNeq(*a, *b)),
-            ("int_lt", [a, b]) => Some(ArithConstraint::IntLt(*a, *b)),
-            ("int_le", [a, b]) => Some(ArithConstraint::IntLe(*a, *b)),
-            ("int_gt", [a, b]) => Some(ArithConstraint::IntGt(*a, *b)),
-            ("int_ge", [a, b]) => Some(ArithConstraint::IntGe(*a, *b)),
-            ("int_add", [a, b, c]) => Some(ArithConstraint::IntAdd(*a, *b, *c)),
-            ("int_sub", [a, b, c]) => Some(ArithConstraint::IntSub(*a, *b, *c)),
-            ("int_mul", [a, b, c]) => Some(ArithConstraint::IntMul(*a, *b, *c)),
-            ("int_div", [a, b, c]) => Some(ArithConstraint::IntDiv(*a, *b, *c)),
-            _ => None,
-        }
-    }
-
-    fn make_real_constraint(&self, name: &str, args: &[TermId]) -> Option<ArithConstraint> {
-        match (name, args) {
-            ("real_eq", [a, b]) => Some(ArithConstraint::RealEq(*a, *b)),
-            ("real_neq", [a, b]) => Some(ArithConstraint::RealNeq(*a, *b)),
-            ("real_lt", [a, b]) => Some(ArithConstraint::RealLt(*a, *b)),
-            ("real_le", [a, b]) => Some(ArithConstraint::RealLe(*a, *b)),
-            ("real_gt", [a, b]) => Some(ArithConstraint::RealGt(*a, *b)),
-            ("real_ge", [a, b]) => Some(ArithConstraint::RealGe(*a, *b)),
-            ("real_add", [a, b, c]) => Some(ArithConstraint::RealAdd(*a, *b, *c)),
-            ("real_sub", [a, b, c]) => Some(ArithConstraint::RealSub(*a, *b, *c)),
-            ("real_mul", [a, b, c]) => Some(ArithConstraint::RealMul(*a, *b, *c)),
-            ("real_div", [a, b, c]) => Some(ArithConstraint::RealDiv(*a, *b, *c)),
-            _ => None,
-        }
-    }
-
-
 
     pub fn step_until_solution(
         &mut self,
@@ -856,7 +781,7 @@ impl<'p> Solver<'p> {
             if let Some((goal, remaining)) = state.pop_goal() {
                 self.step_prop(remaining, goal, &mut queue);
             } else if let Some(solved_subst) =
-                state.constraints.solve_all(&state.subst, self.program, &self.z3_solver)
+                state.constraints.solve_constraints(&state.subst, self.program, &self.z3_solver)
             {
                 #[cfg(feature = "profile")]
                 PROFILE_STATS.with(|stats| {

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::ast::{Module, Rule, Stage, Term};
 use crate::ast::parser::{self, Span};
 use crate::solver::ir::{
-    Clause, DrawDirective as IrDrawDirective, Program, Prop, PropId, RelId, RelInfo, RelKind,
+    Clause, ConstraintKind, DrawDirective as IrDrawDirective, Program, Prop, PropId, RelId, RelInfo,
     Stage as IrStage, SymbolId, Term as IRTerm, TermId, Var,
 };
 use nom::Finish;
@@ -25,31 +25,7 @@ fn parse_stdlib_rules() -> Vec<Rule> {
     }
 }
 
-const SMT_INT_RELATIONS: &[(&str, usize)] = &[
-    ("int_eq", 2),
-    ("int_neq", 2),
-    ("int_lt", 2),
-    ("int_le", 2),
-    ("int_gt", 2),
-    ("int_ge", 2),
-    ("int_add", 3),
-    ("int_sub", 3),
-    ("int_mul", 3),
-    ("int_div", 3),
-];
 
-const SMT_REAL_RELATIONS: &[(&str, usize)] = &[
-    ("real_eq", 2),
-    ("real_neq", 2),
-    ("real_lt", 2),
-    ("real_le", 2),
-    ("real_gt", 2),
-    ("real_ge", 2),
-    ("real_add", 3),
-    ("real_sub", 3),
-    ("real_mul", 3),
-    ("real_div", 3),
-];
 
 pub struct Compiler<'a> {
     program: &'a mut Program,
@@ -65,14 +41,12 @@ impl<'a> Compiler<'a> {
             rel_map.insert(rel_info.name.clone(), id);
         }
 
-        let mut compiler = Self {
+        Self {
             program,
             rel_map,
             var_map: HashMap::new(),
             next_var_map: HashMap::new(),
-        };
-        compiler.register_builtin_relations();
-        compiler
+        }
     }
 
     pub fn with_var_map(program: &'a mut Program, var_map: HashMap<String, TermId>) -> Self {
@@ -81,37 +55,25 @@ impl<'a> Compiler<'a> {
             rel_map.insert(rel_info.name.clone(), id);
         }
 
-        let mut compiler = Self {
+        Self {
             program,
             rel_map,
             var_map,
             next_var_map: HashMap::new(),
-        };
-        compiler.register_builtin_relations();
-        compiler
+        }
     }
 
     pub fn into_var_map(self) -> HashMap<String, TermId> {
         self.var_map
     }
 
-    fn register_builtin_relations(&mut self) {
-        for &(name, arity) in SMT_INT_RELATIONS {
-            self.get_or_create_rel(name, arity, RelKind::SMTInt);
-        }
-        for &(name, arity) in SMT_REAL_RELATIONS {
-            self.get_or_create_rel(name, arity, RelKind::SMTReal);
-        }
-    }
-
-    fn get_or_create_rel(&mut self, name: &str, arity: usize, kind: RelKind) -> RelId {
+    fn get_or_create_rel(&mut self, name: &str, arity: usize) -> RelId {
         if let Some(&id) = self.rel_map.get(name) {
             return id;
         }
         let info = RelInfo {
             name: name.to_string(),
             arity,
-            kind,
         };
         let id = self.program.rels.alloc(info);
         self.rel_map.insert(name.to_string(), id);
@@ -200,19 +162,6 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn is_smt_relation(&self, name: &str) -> bool {
-        SMT_INT_RELATIONS.iter().any(|(n, _)| *n == name)
-            || SMT_REAL_RELATIONS.iter().any(|(n, _)| *n == name)
-    }
-
-    fn smt_kind(&self, name: &str) -> RelKind {
-        if SMT_INT_RELATIONS.iter().any(|(n, _)| *n == name) {
-            RelKind::SMTInt
-        } else {
-            RelKind::SMTReal
-        }
-    }
-
     fn lower_term_to_prop(&mut self, term: &Term) -> PropId {
         match term {
             Term::Atom { text } if text == "true" => self.alloc_prop(Prop::True),
@@ -257,20 +206,13 @@ impl<'a> Compiler<'a> {
                             .map(|a| self.lower_term_arg(a))
                             .collect();
 
-                        let arity = lowered_args.len();
-                        let kind = if self.is_smt_relation(rel_name) {
-                            self.smt_kind(rel_name)
+                        if let Some(kind) = ConstraintKind::from_name(rel_name) {
+                            self.alloc_prop(Prop::Constraint { kind, args: lowered_args })
                         } else {
-                            RelKind::User
-                        };
-
-                        let rel_id = self.get_or_create_rel(rel_name, arity, kind);
-
-                        let app_prop = Prop::App {
-                            rel: rel_id,
-                            args: lowered_args,
-                        };
-                        self.alloc_prop(app_prop)
+                            let arity = lowered_args.len();
+                            let rel_id = self.get_or_create_rel(rel_name, arity);
+                            self.alloc_prop(Prop::App { rel: rel_id, args: lowered_args })
+                        }
                     }
                 }
             }
@@ -299,7 +241,7 @@ impl<'a> Compiler<'a> {
                     .collect();
 
                 let arity = lowered_args.len();
-                let rel_id = self.get_or_create_rel(rel_name, arity, RelKind::User);
+                let rel_id = self.get_or_create_rel(rel_name, arity);
 
                 (rel_id, lowered_args)
             }
