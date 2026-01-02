@@ -3,6 +3,7 @@
     <head>
         <title> gg3z editor </title>
         <script src="https://pixijs.download/v7.4.2/pixi.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/ace.min.js"></script>
         <link rel="stylesheet" href="./editor.css"></link>
     </head>
     <body>
@@ -12,7 +13,7 @@
         </header>
         <div class="container">
             <div class="left-column">
-                <textarea id="input"></textarea>
+                <div id="editor"></div>
                 <div class="controls">
                     <button id="reload">Reload</button>
                     <span id="stages"></span>
@@ -47,7 +48,7 @@
         <script type="module">
             const sampleRes = await fetch('./sample.gg3z');
             const sampleCode = await sampleRes.text();
-            document.querySelector('#input').value = sampleCode;
+            window.initialCode = sampleCode;
         </script>
         <script type="module" src="./editor.js"></script>
     </body>

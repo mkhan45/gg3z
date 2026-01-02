@@ -48,7 +48,10 @@ let frontend_draw_command_arg = Module.cwrap('frontend_draw_command_arg', 'numbe
 const reloadBtn = document.querySelector('#reload');
 const stagesSpan = document.querySelector('#stages');
 const stateVarsDiv = document.querySelector('#state-vars');
-const inp = document.querySelector('#input');
+const editor = ace.edit("editor");
+if (window.initialCode) {
+    editor.setValue(window.initialCode, -1);
+}
 const out = document.querySelector('#output');
 const queryInput = document.querySelector('#query-input');
 const queryBtn = document.querySelector('#query-btn');
@@ -114,7 +117,7 @@ function keyToAtom(key) {
 }
 
 document.addEventListener('keydown', (e) => {
-    if (e.target === inp) return;
+    if (editor.isFocused()) return;
     const atom = keyToAtom(e.key);
     if (!pressedKeys.has(atom)) {
         pressedKeys.add(atom);
@@ -127,7 +130,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-    if (e.target === inp) return;
+    if (editor.isFocused()) return;
     const atom = keyToAtom(e.key);
     pressedKeys.delete(atom);
     frontend_clear_facts_by_relation(frontend, 'key_pressed');
@@ -309,7 +312,7 @@ reloadBtn.onclick = () => {
         free_module(currentModule);
     }
 
-    const code = inp.value;
+    const code = editor.getValue();
     
     const loadError = frontend_load(frontend, code);
     if (loadError) {
