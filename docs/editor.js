@@ -58,6 +58,7 @@ const strategySelect = document.querySelector('#strategy-select');
 const maxStepsInput = document.querySelector('#max-steps-input');
 const stepBtn = document.querySelector('#step-btn');
 const runBtn = document.querySelector('#run-btn');
+const resumeBtn = document.querySelector('#resume-btn');
 const pauseBtn = document.querySelector('#pause-btn');
 const canvasContainer = document.querySelector('#canvas-container');
 const keysList = document.querySelector('#keys-list');
@@ -210,8 +211,19 @@ runBtn.onclick = () => {
     reloadBtn.click();
     isRunning = true;
     runBtn.disabled = true;
+    resumeBtn.disabled = true;
     pauseBtn.disabled = false;
-    gameLoop();
+    lastFrameTime = performance.now();
+    requestAnimationFrame(gameLoop);
+};
+
+resumeBtn.onclick = () => {
+    isRunning = true;
+    runBtn.disabled = true;
+    resumeBtn.disabled = true;
+    pauseBtn.disabled = false;
+    lastFrameTime = performance.now();
+    requestAnimationFrame(gameLoop);
 };
 
 pauseBtn.onclick = () => {
@@ -221,6 +233,7 @@ pauseBtn.onclick = () => {
         animationId = null;
     }
     runBtn.disabled = false;
+    resumeBtn.disabled = false;
     pauseBtn.disabled = true;
 };
 
