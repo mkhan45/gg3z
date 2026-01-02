@@ -5,8 +5,8 @@ use std::os::raw::c_char;
 
 use nom::Finish;
 
-use crate::ast::Module;
 use crate::ast::parser;
+use crate::ast::Module;
 use crate::solver::SearchStrategy;
 
 use super::Frontend;
@@ -51,24 +51,28 @@ pub unsafe extern "C" fn frontend_set_max_steps(frontend: *mut Frontend, max_ste
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn frontend_get_max_steps(frontend: *mut Frontend) -> i32 {
-    unsafe {
-        (*frontend).max_steps as i32
-    }
+    unsafe { (*frontend).max_steps as i32 }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_load(frontend: *mut Frontend, source: *const c_char) -> i32 {
+pub unsafe extern "C" fn frontend_load(
+    frontend: *mut Frontend,
+    source: *const c_char,
+) -> *mut c_char {
     unsafe {
         let source_str = CStr::from_ptr(source).to_str().unwrap_or("");
         match (*frontend).load(source_str) {
-            Ok(()) => 0,
-            Err(_) => 1,
+            Ok(()) => std::ptr::null_mut(),
+            Err(e) => CString::new(e).unwrap().into_raw(),
         }
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_query(frontend: *mut Frontend, query: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn frontend_query(
+    frontend: *mut Frontend,
+    query: *const c_char,
+) -> *mut c_char {
     unsafe {
         let query_str = CStr::from_ptr(query).to_str().unwrap_or("");
         let result = (*frontend).query_batch(query_str, 10);
@@ -87,10 +91,18 @@ pub unsafe extern "C" fn frontend_query(frontend: *mut Frontend, query: *const c
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_query_start(frontend: *mut Frontend, query: *const c_char, stage_index: i32) -> *mut c_char {
+pub unsafe extern "C" fn frontend_query_start(
+    frontend: *mut Frontend,
+    query: *const c_char,
+    stage_index: i32,
+) -> *mut c_char {
     unsafe {
         let query_str = CStr::from_ptr(query).to_str().unwrap_or("");
-        let stage = if stage_index >= 0 { Some(stage_index as usize) } else { None };
+        let stage = if stage_index >= 0 {
+            Some(stage_index as usize)
+        } else {
+            None
+        };
         let result = (*frontend).query_start(query_str, stage);
         let output = match result {
             Ok(Some(solution)) => solution,
@@ -116,7 +128,11 @@ pub unsafe extern "C" fn frontend_query_next(frontend: *mut Frontend) -> *mut c_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn frontend_has_more(frontend: *mut Frontend) -> i32 {
     unsafe {
-        if (*frontend).has_more_solutions() { 1 } else { 0 }
+        if (*frontend).has_more_solutions() {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -176,7 +192,10 @@ pub unsafe extern "C" fn frontend_run_stage(frontend: *mut Frontend, stage_index
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_run_stage_by_name(frontend: *mut Frontend, name: *const c_char) -> i32 {
+pub unsafe extern "C" fn frontend_run_stage_by_name(
+    frontend: *mut Frontend,
+    name: *const c_char,
+) -> i32 {
     unsafe {
         let name_str = CStr::from_ptr(name).to_str().unwrap_or("");
         match (*frontend).run_stage_by_name(name_str) {
@@ -187,7 +206,10 @@ pub unsafe extern "C" fn frontend_run_stage_by_name(frontend: *mut Frontend, nam
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_get_state_var(frontend: *mut Frontend, name: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn frontend_get_state_var(
+    frontend: *mut Frontend,
+    name: *const c_char,
+) -> *mut c_char {
     unsafe {
         let name_str = CStr::from_ptr(name).to_str().unwrap_or("");
         let value = (*frontend).get_state_var(name_str).unwrap_or_default();
@@ -201,7 +223,10 @@ pub unsafe extern "C" fn frontend_state_var_count(frontend: *mut Frontend) -> i3
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_state_var_name(frontend: *mut Frontend, index: i32) -> *mut c_char {
+pub unsafe extern "C" fn frontend_state_var_name(
+    frontend: *mut Frontend,
+    index: i32,
+) -> *mut c_char {
     unsafe {
         if let Some(name) = (&(*frontend).program.state_vars).get(index as usize) {
             CString::new(name.clone()).unwrap().into_raw()
@@ -212,9 +237,15 @@ pub unsafe extern "C" fn frontend_state_var_name(frontend: *mut Frontend, index:
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_state_var_value(frontend: *mut Frontend, index: i32) -> *mut c_char {
+pub unsafe extern "C" fn frontend_state_var_value(
+    frontend: *mut Frontend,
+    index: i32,
+) -> *mut c_char {
     unsafe {
-        if let Some(name) = (&(*frontend).program.state_vars).get(index as usize).cloned() {
+        if let Some(name) = (&(*frontend).program.state_vars)
+            .get(index as usize)
+            .cloned()
+        {
             let value = (*frontend).get_state_var(&name).unwrap_or_default();
             CString::new(value).unwrap().into_raw()
         } else {
@@ -273,7 +304,11 @@ pub unsafe extern "C" fn frontend_query_batch(
 ) -> *mut c_char {
     unsafe {
         let query_str = CStr::from_ptr(query).to_str().unwrap_or("");
-        let stage = if stage_index >= 0 { Some(stage_index as usize) } else { None };
+        let stage = if stage_index >= 0 {
+            Some(stage_index as usize)
+        } else {
+            None
+        };
         let result = (*frontend).query_batch_in_stage(query_str, limit as usize, stage);
         let output = match result {
             Ok(solutions) => {
@@ -301,7 +336,10 @@ pub unsafe extern "C" fn frontend_add_fact(frontend: *mut Frontend, fact: *const
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_clear_facts_by_relation(frontend: *mut Frontend, relation: *const c_char) {
+pub unsafe extern "C" fn frontend_clear_facts_by_relation(
+    frontend: *mut Frontend,
+    relation: *const c_char,
+) {
     unsafe {
         let relation_str = CStr::from_ptr(relation).to_str().unwrap_or("");
         (*frontend).clear_facts_by_relation(relation_str);
@@ -323,7 +361,10 @@ pub unsafe extern "C" fn frontend_collect_draws(frontend: *mut Frontend, stage_i
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_collect_draws_by_name(frontend: *mut Frontend, name: *const c_char) -> i32 {
+pub unsafe extern "C" fn frontend_collect_draws_by_name(
+    frontend: *mut Frontend,
+    name: *const c_char,
+) -> i32 {
     unsafe {
         let name_str = CStr::from_ptr(name).to_str().unwrap_or("");
         match (*frontend).collect_draws_by_name(name_str) {
@@ -338,7 +379,10 @@ pub unsafe extern "C" fn frontend_collect_draws_by_name(frontend: *mut Frontend,
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_draw_command_name(frontend: *mut Frontend, index: i32) -> *mut c_char {
+pub unsafe extern "C" fn frontend_draw_command_name(
+    frontend: *mut Frontend,
+    index: i32,
+) -> *mut c_char {
     unsafe {
         if let Some(cmd) = (&(*frontend).draw_cache).get(index as usize) {
             CString::new(cmd.name.clone()).unwrap().into_raw()
@@ -349,7 +393,10 @@ pub unsafe extern "C" fn frontend_draw_command_name(frontend: *mut Frontend, ind
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_draw_command_arg_count(frontend: *mut Frontend, index: i32) -> i32 {
+pub unsafe extern "C" fn frontend_draw_command_arg_count(
+    frontend: *mut Frontend,
+    index: i32,
+) -> i32 {
     unsafe {
         if let Some(cmd) = (&(*frontend).draw_cache).get(index as usize) {
             cmd.args.len() as i32
@@ -360,7 +407,11 @@ pub unsafe extern "C" fn frontend_draw_command_arg_count(frontend: *mut Frontend
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn frontend_draw_command_arg(frontend: *mut Frontend, index: i32, arg_index: i32) -> f32 {
+pub unsafe extern "C" fn frontend_draw_command_arg(
+    frontend: *mut Frontend,
+    index: i32,
+    arg_index: i32,
+) -> f32 {
     unsafe {
         if let Some(cmd) = (&(*frontend).draw_cache).get(index as usize) {
             if let Some(&arg) = cmd.args.get(arg_index as usize) {

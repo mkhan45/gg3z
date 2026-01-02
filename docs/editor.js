@@ -17,7 +17,7 @@ let module_get_stage_name = Module.cwrap('module_get_stage_name', 'string', ['nu
 
 let create_frontend = Module.cwrap('create_frontend', 'number', []);
 let free_frontend = Module.cwrap('free_frontend', null, ['number']);
-let frontend_load = Module.cwrap('frontend_load', 'number', ['number', 'string']);
+let frontend_load = Module.cwrap('frontend_load', 'string', ['number', 'string']);
 let frontend_query = Module.cwrap('frontend_query', 'string', ['number', 'string']);
 let frontend_fact_count = Module.cwrap('frontend_fact_count', 'number', ['number']);
 let frontend_rule_count = Module.cwrap('frontend_rule_count', 'number', ['number']);
@@ -310,18 +310,15 @@ reloadBtn.onclick = () => {
     }
 
     const code = inp.value;
+    
+    const loadError = frontend_load(frontend, code);
+    if (loadError) {
+        out.innerText = loadError;
+        currentModule = null;
+        return;
+    }
+
     currentModule = parse_module(code);
-
-    if (!currentModule) {
-        out.innerText = 'Parse error';
-        return;
-    }
-
-    const loadResult = frontend_load(frontend, code);
-    if (loadResult !== 0) {
-        out.innerText = 'Load error';
-        return;
-    }
 
     lastRunStage = -1;
     const factCount = frontend_fact_count(frontend);

@@ -4,11 +4,14 @@ use std::collections::HashMap;
 
 use nom::Finish;
 
-use crate::solver::ir::{Program, PropId, Prop, Term, TermId};
-use crate::solver::{format_solution, Solver, SearchStrategy, SearchQueue, Subst, reify_term, TerminationReason, SolutionSet};
+use crate::solver::ir::{Program, Prop, PropId, Term, TermId};
+use crate::solver::{
+    format_solution, reify_term, SearchQueue, SearchStrategy, SolutionSet, Solver, Subst,
+    TerminationReason,
+};
 
-use crate::ast::parser;
 use crate::ast::compile::Compiler;
+use crate::ast::parser;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawCommand {
@@ -66,7 +69,23 @@ impl Frontend {
                 self.var_map = compiler.into_var_map();
                 Ok(())
             }
-            Err(e) => Err(format!("Parse error: {:?}", e)),
+            Err(e) => {
+                let line = e.input.location_line();
+                let col = e.input.get_utf8_column();
+                let snippet = e.input.fragment().lines().next().unwrap_or("");
+                let snippet_display = if snippet.len() > 60 {
+                    format!("{}...", &snippet[..60])
+                } else {
+                    snippet.to_string()
+                };
+                Err(format!(
+                    "Parse error at line {}, column {}:\n  {}\n  {}^",
+                    line,
+                    col,
+                    snippet_display,
+                    " ".repeat(col.saturating_sub(1))
+                ))
+            }
         }
     }
 
@@ -114,8 +133,8 @@ impl Frontend {
             }
         };
 
-        let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
-            .compile_query(&term);
+        let (goal, query_vars) =
+            Compiler::with_var_map(&mut self.program, self.var_map.clone()).compile_query(&term);
 
         // State variables are synchronized via two mechanisms:
         // 1. var_map: Runtime tracking of current state variable term IDs
@@ -155,7 +174,11 @@ impl Frontend {
     /// Use `query_next()` to retrieve subsequent solutions.
     /// Use `query_stop()` to abandon the query.
     /// Use `has_more_solutions()` to check if more results are available.
-    pub fn query_start(&mut self, query_str: &str, stage_index: Option<usize>) -> Result<Option<String>, String> {
+    pub fn query_start(
+        &mut self,
+        query_str: &str,
+        stage_index: Option<usize>,
+    ) -> Result<Option<String>, String> {
         self.query_stop();
 
         if let Some(idx) = stage_index {
@@ -171,8 +194,8 @@ impl Frontend {
             }
         };
 
-        let (goal, query_vars) = Compiler::with_var_map(&mut self.program, self.var_map.clone())
-            .compile_query(&term);
+        let (goal, query_vars) =
+            Compiler::with_var_map(&mut self.program, self.var_map.clone()).compile_query(&term);
 
         self.pending_query_vars = query_vars;
 
@@ -186,7 +209,11 @@ impl Frontend {
         self.update_incremental_state(found_solution, queue_exhausted, remaining_queue);
 
         match solution {
-            Some(state) => Ok(Some(format_solution(&self.pending_query_vars, &state, &self.program))),
+            Some(state) => Ok(Some(format_solution(
+                &self.pending_query_vars,
+                &state,
+                &self.program,
+            ))),
             None => {
                 if self.pending_queue.as_ref().is_none_or(|q| q.is_empty()) {
                     self.pending_queue = None;
@@ -239,7 +266,10 @@ impl Frontend {
         if stage_index >= self.program.stages.len() {
             return Err(format!("Stage index {} out of bounds", stage_index));
         }
-        if self.program.stages[stage_index].state_constraints.is_empty() {
+        if self.program.stages[stage_index]
+            .state_constraints
+            .is_empty()
+        {
             return Ok(());
         }
 
@@ -254,7 +284,9 @@ impl Frontend {
     }
 
     pub fn run_stage_by_name(&mut self, name: &str) -> Result<(), String> {
-        let stage_index = self.program.stages
+        let stage_index = self
+            .program
+            .stages
             .iter()
             .position(|s| s.name == name)
             .ok_or_else(|| format!("Stage '{}' not found", name))?;
@@ -263,11 +295,11 @@ impl Frontend {
 
     pub fn get_state_var(&mut self, name: &str) -> Option<String> {
         let term_id = *self.var_map.get(name)?;
-        
+
         let true_prop = self.program.props.alloc(Prop::True);
         let mut solver = Solver::new(&mut self.program);
         let solution_set = solver.collect_solutions(true_prop, self.strategy, 1, self.max_steps);
-        
+
         if let Some(solution) = solution_set.solutions().first() {
             Some(reify_term(term_id, &solution.subst, solver.program))
         } else {
@@ -280,16 +312,14 @@ impl Frontend {
         let state_var_names = self.program.state_vars.clone();
         let var_map_snapshot: Vec<(String, TermId)> = state_var_names
             .iter()
-            .filter_map(|name| {
-                self.var_map.get(name).map(|&tid| (name.clone(), tid))
-            })
+            .filter_map(|name| self.var_map.get(name).map(|&tid| (name.clone(), tid)))
             .collect();
-        
+
         let mut solver = Solver::new(&mut self.program);
         let solution_set = solver.collect_solutions(true_prop, self.strategy, 1, self.max_steps);
-        
+
         let subst = solution_set.solutions().first().map(|s| &s.subst);
-        
+
         var_map_snapshot
             .into_iter()
             .map(|(name, term_id)| {
@@ -303,13 +333,18 @@ impl Frontend {
             .collect()
     }
 
-    fn update_incremental_state(&mut self, found_solution: bool, queue_exhausted: bool, remaining_queue: SearchQueue) {
+    fn update_incremental_state(
+        &mut self,
+        found_solution: bool,
+        queue_exhausted: bool,
+        remaining_queue: SearchQueue,
+    ) {
         self.last_query_reason = Some(if !found_solution && !queue_exhausted {
-            TerminationReason::MaxStepsReached  // No solution, queue has more work
+            TerminationReason::MaxStepsReached // No solution, queue has more work
         } else if found_solution && !queue_exhausted {
-            TerminationReason::LimitReached     // Found solution, more available
+            TerminationReason::LimitReached // Found solution, more available
         } else {
-            TerminationReason::SearchExhausted  // No solution or found solution with search complete
+            TerminationReason::SearchExhausted // No solution or found solution with search complete
         });
 
         self.pending_queue = if queue_exhausted {
@@ -363,7 +398,10 @@ impl Frontend {
         let mut all_constraints = Vec::new();
         for (name, resolved_val) in &resolved_state_values {
             if let Some(&original_term) = self.program.state_var_term_ids.get(name) {
-                let eq_prop = self.program.props.alloc(Prop::Eq(original_term, *resolved_val));
+                let eq_prop = self
+                    .program
+                    .props
+                    .alloc(Prop::Eq(original_term, *resolved_val));
                 all_constraints.push(eq_prop);
             }
         }
@@ -462,7 +500,7 @@ impl Frontend {
         let mut updated_facts = Vec::new();
 
         let fact_ids: Vec<_> = self.program.facts.iter().copied().collect();
-        
+
         for fact_prop_id in fact_ids {
             let fact_prop = self.program.props.get(fact_prop_id).clone();
 
@@ -491,7 +529,9 @@ impl Frontend {
             if term_a == *original_term_id || term_b == *original_term_id {
                 if let Some((_, new_value)) = new_values.iter().find(|(n, _)| n == name) {
                     let new_fact = if term_a == *original_term_id {
-                        self.program.props.alloc(Prop::Eq(*original_term_id, *new_value))
+                        self.program
+                            .props
+                            .alloc(Prop::Eq(*original_term_id, *new_value))
                     } else {
                         self.program.props.alloc(Prop::Eq(term_b, *new_value))
                     };
@@ -509,8 +549,8 @@ impl Frontend {
             Err(e) => return Err(format!("Fact parse error: {:?}", e)),
         };
 
-        let prop = Compiler::with_var_map(&mut self.program, self.var_map.clone())
-            .compile_fact(&term);
+        let prop =
+            Compiler::with_var_map(&mut self.program, self.var_map.clone()).compile_fact(&term);
         self.program.facts.push(prop);
         Ok(())
     }
