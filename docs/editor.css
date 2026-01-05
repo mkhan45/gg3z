@@ -39,13 +39,18 @@ header a:hover {
     min-width: 0;
 }
 .right-column {
-    width: 820px;
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
 }
 #canvas-container {
+    width: 100%;
+    aspect-ratio: 2 / 1;
     border: 2px solid #2d3748;
     border-radius: 4px;
     background: #1a1a2e;
+    box-sizing: border-box;
 }
 #editor {
     width: 100%;

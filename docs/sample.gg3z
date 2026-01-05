@@ -6,8 +6,8 @@ Begin Facts:
     StateVar Dead
     RunnerY = 0.0
     RunnerVY = 0.0
-    ObstacleX = 100.0
-    ObstacleVX = 1.5
+    ObstacleX = 800.0
+    ObstacleVX = 12.0
     Dead = no
 End Facts
 
@@ -18,24 +18,24 @@ Begin Global:
     shouldJump()
 
     Rule RespawnObstacle:
-    ObstacleX .< -3.0
+    ObstacleX .< -24.0
     -----------------------
     shouldRespawnObstacle()
 
     Rule GameOver:
-    RunnerY .< 1.0 & ObstacleX .< 2.0
+    RunnerY .< 8.0 & ObstacleX .< 16.0
     ---------------------------------
     collided()
 End Global
 
 Begin Stage Control:
     Begin State Constraints:
-        when shouldJump(): next(RunnerVY) = 3.5
+        when shouldJump(): next(RunnerVY) = 28.0
         otherwise: preserve(RunnerVY)
 
         when shouldRespawnObstacle():
-            next(ObstacleX) = 100.0 & 
-            real_add(ObstacleVX, 0.25, next(ObstacleVX))
+            next(ObstacleX) = 800.0 & 
+            real_add(ObstacleVX, 2.0, next(ObstacleVX))
         otherwise:
             real_sub(ObstacleX, ObstacleVX, next(ObstacleX)) &
             preserve(ObstacleVX)
@@ -47,11 +47,11 @@ End Stage Control
 
 Begin Stage Physics:
     Begin State Constraints:
-        real_sub(RunnerVY, 0.5, NewVY)
+        real_sub(RunnerVY, 4.0, NewVY)
         real_add(RunnerY, RunnerVY, NewY)
 
         when NewY .> 0.0:
-            real_sub(RunnerVY, 0.5, next(RunnerVY)) &
+            real_sub(RunnerVY, 4.0, next(RunnerVY)) &
             real_add(RunnerY, RunnerVY, next(RunnerY))
         otherwise:
             next(RunnerY) = 0.0 &
@@ -63,15 +63,15 @@ Begin Stage Draw:
     With
         Dead = no
     Draw
-        rect(1.0, RunnerY, 1.0, 1.0)
-        rect(ObstacleX, 0.0, 1.0, 1.0)
+        rect(8.0, RunnerY, 8.0, 8.0)
+        rect(ObstacleX, 0.0, 8.0, 8.0)
 
     With
         Dead = yes
     Draw
-        rect(40.0, 40.0, 1.0, 1.0)
-        rect(60.0, 40.0, 1.0, 1.0)
-        rect(46.0, 25.0, 9.0, 1.0)
-        rect(45.0, 23.0, 1.0, 2.0)
-        rect(55.0, 23.0, 1.0, 2.0)
+        rect(320.0, 320.0, 8.0, 8.0)
+        rect(480.0, 320.0, 8.0, 8.0)
+        rect(368.0, 200.0, 72.0, 8.0)
+        rect(360.0, 184.0, 8.0, 16.0)
+        rect(440.0, 184.0, 8.0, 16.0)
 End Stage Draw

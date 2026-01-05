@@ -76,16 +76,43 @@ let animationId = null;
 let lastFrameTime = 0;
 const FRAME_INTERVAL = 1000 / 30; // 30 FPS
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 400;
-const SCALE = 8;
+// Logical coordinate space (gg3z assumes this)
+const LOGICAL_WIDTH = 800;
+const LOGICAL_HEIGHT = 400;
+const ASPECT_RATIO = LOGICAL_WIDTH / LOGICAL_HEIGHT;
+
+// Actual canvas dimensions (updated on resize)
+let canvasWidth = LOGICAL_WIDTH;
+let canvasHeight = LOGICAL_HEIGHT;
 
 const app = new PIXI.Application({
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
+    width: canvasWidth,
+    height: canvasHeight,
     backgroundColor: 0x1a1a2e,
+    resizeTo: undefined, // We'll handle resizing manually
 });
 canvasContainer.appendChild(app.view);
+
+function resizeCanvas() {
+    // Container uses CSS aspect-ratio: 2/1, so dimensions are already correct ratio
+    const containerWidth = canvasContainer.clientWidth;
+    const containerHeight = canvasContainer.clientHeight;
+
+    // Use container dimensions directly (CSS enforces aspect ratio)
+    canvasWidth = Math.max(containerWidth, 200);
+    canvasHeight = Math.max(containerHeight, 100);
+
+    app.renderer.resize(canvasWidth, canvasHeight);
+}
+
+// Handle window resize
+window.addEventListener('resize', () => {
+    resizeCanvas();
+    drawRects();
+});
+
+// Initial resize
+resizeCanvas();
 
 const graphics = new PIXI.Graphics();
 app.stage.addChild(graphics);
@@ -152,14 +179,22 @@ function findStageIndices() {
 function drawRects() {
     graphics.clear();
 
+    // Dynamic scale factor: maps logical coordinates to actual canvas pixels
+    const scaleX = canvasWidth / LOGICAL_WIDTH;
+    const scaleY = canvasHeight / LOGICAL_HEIGHT;
+
+    // Grid uses a fixed logical grid size (e.g., 8 logical units)
+    const GRID_SIZE = 8;
     graphics.lineStyle(1, 0x444466);
-    for (let x = 0; x <= CANVAS_WIDTH; x += SCALE) {
+    for (let lx = 0; lx <= LOGICAL_WIDTH; lx += GRID_SIZE) {
+        const x = lx * scaleX;
         graphics.moveTo(x, 0);
-        graphics.lineTo(x, CANVAS_HEIGHT);
+        graphics.lineTo(x, canvasHeight);
     }
-    for (let y = 0; y <= CANVAS_HEIGHT; y += SCALE) {
-        graphics.moveTo(0, CANVAS_HEIGHT - y);
-        graphics.lineTo(CANVAS_WIDTH, CANVAS_HEIGHT - y);
+    for (let ly = 0; ly <= LOGICAL_HEIGHT; ly += GRID_SIZE) {
+        const y = canvasHeight - ly * scaleY;
+        graphics.moveTo(0, y);
+        graphics.lineTo(canvasWidth, y);
     }
 
     if (drawStageIndex < 0) return;
@@ -173,14 +208,16 @@ function drawRects() {
         if (name === 'rect') {
             const argCount = frontend_draw_command_arg_count(frontend, i);
             if (argCount >= 4) {
+                // Logical coordinates from gg3z (assumes 800x400 space)
                 const x = frontend_draw_command_arg(frontend, i, 0);
                 const y = frontend_draw_command_arg(frontend, i, 1);
                 const w = frontend_draw_command_arg(frontend, i, 2);
                 const h = frontend_draw_command_arg(frontend, i, 3);
-                const screenX = x * SCALE;
-                const screenY = CANVAS_HEIGHT - (y + h) * SCALE;
-                const screenW = w * SCALE;
-                const screenH = h * SCALE;
+                // Scale to actual canvas size
+                const screenX = x * scaleX;
+                const screenY = canvasHeight - (y + h) * scaleY;
+                const screenW = w * scaleX;
+                const screenH = h * scaleY;
                 graphics.drawRect(screenX, screenY, screenW, screenH);
             }
         }
@@ -213,7 +250,7 @@ function gameLoop(timestamp) {
 runBtn.onclick = () => {
     reloadBtn.click();
     isRunning = true;
-    runBtn.disabled = true;
+    runBtn.textContent = 'Restart';
     resumeBtn.disabled = true;
     pauseBtn.disabled = false;
     lastFrameTime = performance.now();
@@ -222,7 +259,7 @@ runBtn.onclick = () => {
 
 resumeBtn.onclick = () => {
     isRunning = true;
-    runBtn.disabled = true;
+    runBtn.textContent = 'Restart';
     resumeBtn.disabled = true;
     pauseBtn.disabled = false;
     lastFrameTime = performance.now();
@@ -235,7 +272,7 @@ pauseBtn.onclick = () => {
         cancelAnimationFrame(animationId);
         animationId = null;
     }
-    runBtn.disabled = false;
+    runBtn.textContent = 'Run';
     resumeBtn.disabled = false;
     pauseBtn.disabled = true;
 };
