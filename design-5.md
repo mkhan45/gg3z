@@ -23,3 +23,5 @@ where
 
 To use tables updating through state, we could pass through a Tick column
 to every relation? Need primary keys or something to prevent duplication?
+
+What about different syntax for asserting a new ground fact vs satisfying a relation?
